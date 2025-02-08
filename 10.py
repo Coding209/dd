@@ -5,7 +5,7 @@ import random
 from faker import Faker
 from pdfrw import PdfReader, PdfWriter, PdfDict
 
-# Initialize Faker for realistic tax data
+# Initialize Faker for generating synthetic tax data
 fake = Faker()
 
 # Define the fillable PDF template path
@@ -70,39 +70,35 @@ def generate_realistic_1040(fields):
 
     # Assign formatted data to form fields
     for field in fields:
-        if "first name" in field.lower():
+        if field == "f1_01":
             tax_data[field] = fake.first_name()
-        elif "last name" in field.lower():
+        elif field == "f1_02":
             tax_data[field] = fake.last_name()
-        elif "social security" in field.lower():
+        elif field == "f1_03":
             tax_data[field] = f"{random.randint(100, 999)}-{random.randint(10, 99)}-{random.randint(1000, 9999)}"
-        elif "address" in field.lower():
+        elif field == "f1_04":
             tax_data[field] = fake.street_address()
-        elif "city" in field.lower():
+        elif field == "f1_05":
             tax_data[field] = fake.city()
-        elif "state" in field.lower():
+        elif field == "f1_06":
             tax_data[field] = fake.state_abbr()
-        elif "zip" in field.lower():
+        elif field == "f1_07":
             tax_data[field] = fake.zipcode()
-        elif "income" in field.lower():
-            tax_data[field] = format_currency(total_income)
-        elif "wages" in field.lower():
+        elif field == "f1_09":
             tax_data[field] = format_currency(wages)
-        elif "interest" in field.lower():
+        elif field == "f1_10":
             tax_data[field] = format_currency(interest_income)
-        elif "dividends" in field.lower():
-            tax_data[field] = format_currency(dividends)
-        elif "deductions" in field.lower():
-            tax_data[field] = format_currency(deduction_amount)
-        elif "taxable" in field.lower():
+        elif field == "f1_11":
+            tax_data[field] = format_currency(total_income)
+        elif field == "f1_12":
             tax_data[field] = format_currency(taxable_income)
-        elif "total tax" in field.lower():
+        elif field == "f1_13":
             tax_data[field] = format_currency(tax_due)
-        elif "federal tax withheld" in field.lower():
+        elif field == "f1_14":
             tax_data[field] = format_currency(federal_tax_withheld)
-        elif "refund" in field.lower():
+        elif field == "f1_15":
             tax_data[field] = format_currency(refund_amount)
-        elif "owed" in field.lower():
+        elif field == "f1_16":
             tax_data[field] = format_currency(amount_owed)
         else:
             tax_data[field] = fake.word()
