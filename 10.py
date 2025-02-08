@@ -3,7 +3,7 @@ import zipfile
 import io
 import random
 from faker import Faker
-import fitz  # PyMuPDF
+from pdfrw import PdfReader, PdfWriter, PdfDict
 
 # Initialize Faker for realistic tax data
 fake = Faker()
@@ -14,13 +14,15 @@ TEMPLATE_PATH = "f1040.pdf"  # Ensure this exists in your repo
 # Step 1: Extract fillable field names from the 1040 PDF
 def extract_pdf_fields(template_path):
     """Extract form field names from a fillable PDF"""
-    doc = fitz.open(template_path)
+    pdf = PdfReader(template_path)
     fields = {}
 
-    for page in doc:
-        for widget in page.widgets():
-            if widget.field_name:
-                fields[widget.field_name] = ""
+    for page in pdf.pages:
+        if page.Annots:
+            for annotation in page.Annots:
+                if annotation.T:
+                    field_name = annotation.T[1:-1]  # Extract field name
+                    fields[field_name] = ""
 
     return fields
 
@@ -112,20 +114,22 @@ def format_currency(value):
     """Format numbers as currency with a dollar sign and commas."""
     return f"${value:,.2f}" if isinstance(value, (int, float)) else value
 
-# Step 3: Fill the 1040 PDF
+# Step 3: Fill the 1040 PDF using `pdfrw`
 def fill_1040_pdf(template_path, data):
     """Fill the fillable PDF with data and flatten it"""
-    doc = fitz.open(template_path)
+    template_pdf = PdfReader(template_path)
 
-    for page in doc:
-        for widget in page.widgets():
-            if widget.field_name and widget.field_name in data:
-                widget.text = data[widget.field_name]  # Assign value
-                widget.update()
+    for page in template_pdf.pages:
+        if page.Annots:
+            for annotation in page.Annots:
+                if annotation.T:
+                    field_name = annotation.T[1:-1]
+                    if field_name in data:
+                        annotation.V = PdfDict(V=data[field_name], AS=data[field_name])  # Fill the field
 
     # Flatten the PDF (makes the filled data permanent)
     buffer = io.BytesIO()
-    doc.save(buffer)
+    PdfWriter(buffer, trailer=template_pdf).write()
     buffer.seek(0)
     return buffer
 
