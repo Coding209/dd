@@ -109,5 +109,42 @@ def fill_1040_pdf(template_path, data):
         if page.Annots:
             for annotation in page.Annots:
                 if annotation.T:
+                    field_name = annotation.T[1:-1]
+                    if field_name in data:
+                        annotation.V = PdfDict(V=data[field_name], AS=data[field_name])  # Fill the field
+
+    # Flatten the PDF (makes the filled data permanent)
+    buffer = io.BytesIO()
+    PdfWriter(buffer, trailer=template_pdf).write()
+    buffer.seek(0)
+    return buffer
+
+# Streamlit UI
+st.title("Realistic Synthetic IRS Form 1040 Generator")
+st.write("This tool generates **realistic IRS Form 1040 PDFs** with accurate tax calculations.")
+
+num_forms = st.number_input("How many 1040 forms do you want to generate?", min_value=1, max_value=50, value=1)
+
+if st.button("Generate and Download Forms"):
+    pdf_files = []
+    
+    extracted_fields = extract_pdf_fields(TEMPLATE_PATH)
+
+    for i in range(num_forms):
+        synthetic_data = generate_realistic_1040(extracted_fields)
+        pdf_buffer = fill_1040_pdf(TEMPLATE_PATH, synthetic_data)
+        pdf_files.append((f"realistic_1040_{i+1}.pdf", pdf_buffer.getvalue()))
+    
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w") as zipf:
+        for filename, pdf_data in pdf_files:
+            zipf.writestr(filename, pdf_data)
+    
+    zip_buffer.seek(0)
+
+    st.download_button("Download All 1040 Forms (ZIP)", data=zip_buffer, file_name="realistic_1040_forms.zip", mime="application/zip")
+
+    st.success(f"{num_forms} Realistic Form 1040 PDFs Generated and Ready for Download! ✅")
+
                   
 
