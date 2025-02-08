@@ -145,6 +145,3 @@ if st.button("Generate and Download Forms"):
     st.download_button("Download All 1040 Forms (ZIP)", data=zip_buffer, file_name="realistic_1040_forms.zip", mime="application/zip")
 
     st.success(f"{num_forms} Realistic Form 1040 PDFs Generated and Ready for Download! ✅")
-
-                  
-
