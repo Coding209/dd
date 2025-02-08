@@ -3,3 +3,4 @@ pymupdf
 faker
 pandas
 zipfile36
+pdfrw
