@@ -4,6 +4,7 @@ import fitz  # PyMuPDF for PDF filling
 import zipfile
 import io
 import random
+import fitz
 from faker import Faker
 
 # Initialize Faker for generating synthetic data
