@@ -4,7 +4,7 @@ import zipfile
 import io
 import random
 from faker import Faker
-from pdfrw import PdfReader, PdfWriter
+import fitz  # PyMuPDF
 
 # Initialize Faker
 fake = Faker()
@@ -14,15 +14,13 @@ TEMPLATE_PATH = "f1040.pdf"  # Ensure this exists in your repo
 
 # Step 1: Extract fillable field names from the 1040 PDF
 def extract_pdf_fields(template_path):
-    pdf = PdfReader(template_path)
+    doc = fitz.open(template_path)
     fields = {}
 
-    for page in pdf.pages:
-        if page.Annots:
-            for annotation in page.Annots:
-                if annotation.T:
-                    field_name = annotation.T[1:-1]  # Extract field name
-                    fields[field_name] = ""  # Store as key for filling
+    for page in doc:
+        for widget in page.widgets():
+            if widget.field_name:
+                fields[widget.field_name] = ""
 
     return fields
 
@@ -120,20 +118,17 @@ def format_currency(value):
 
 # Step 3: Fill the 1040 PDF
 def fill_1040_pdf(template_path, data):
-    template_pdf = PdfReader(template_path)
+    doc = fitz.open(template_path)
 
-    for page in template_pdf.pages:
-        annotations = page.Annots or []
-        for annotation in annotations:
-            if annotation.T:
-                field_name = annotation.T[1:-1]
-                if field_name in data:
-                    annotation.V = f"({data[field_name]})"
-                    annotation.AP = None  # Ensure proper display
+    for page in doc:
+        for widget in page.widgets():
+            if widget.field_name and widget.field_name in data:
+                widget.text = data[widget.field_name]  # Assign value correctly
+                widget.update()
 
     # Flatten the PDF (makes the filled data permanent)
     buffer = io.BytesIO()
-    PdfWriter(buffer, trailer=template_pdf, verbose=True).write()
+    doc.save(buffer, incremental=True, encryption=fitz.PDF_ENCRYPT_KEEP)
     buffer.seek(0)
     return buffer
 
@@ -163,4 +158,3 @@ if st.button("Generate and Download Forms"):
     st.download_button("Download All 1040 Forms (ZIP)", data=zip_buffer, file_name="realistic_1040_forms.zip", mime="application/zip")
 
     st.success(f"{num_forms} Realistic Form 1040 PDFs Generated and Ready for Download! ✅")
-
