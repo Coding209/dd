@@ -89,29 +89,34 @@ def generate_realistic_1040(fields):
         elif "zip" in field.lower():
             tax_data[field] = fake.zipcode()
         elif "income" in field.lower():
-            tax_data[field] = str(total_income)
+            tax_data[field] = format_currency(total_income)
         elif "wages" in field.lower():
-            tax_data[field] = str(wages)
+            tax_data[field] = format_currency(wages)
         elif "interest" in field.lower():
-            tax_data[field] = str(interest_income)
+            tax_data[field] = format_currency(interest_income)
         elif "dividends" in field.lower():
-            tax_data[field] = str(dividends)
+            tax_data[field] = format_currency(dividends)
         elif "deductions" in field.lower():
-            tax_data[field] = str(deduction_amount)
+            tax_data[field] = format_currency(deduction_amount)
         elif "taxable" in field.lower():
-            tax_data[field] = str(taxable_income)
+            tax_data[field] = format_currency(taxable_income)
         elif "total tax" in field.lower():
-            tax_data[field] = str(tax_due)
+            tax_data[field] = format_currency(tax_due)
         elif "federal tax withheld" in field.lower():
-            tax_data[field] = str(federal_tax_withheld)
+            tax_data[field] = format_currency(federal_tax_withheld)
         elif "refund" in field.lower():
-            tax_data[field] = str(refund_amount)
+            tax_data[field] = format_currency(refund_amount)
         elif "owed" in field.lower():
-            tax_data[field] = str(amount_owed)
+            tax_data[field] = format_currency(amount_owed)
         else:
             tax_data[field] = fake.word()
 
     return tax_data
+
+# Format monetary values correctly
+def format_currency(value):
+    """Format numbers as currency with a dollar sign and commas."""
+    return f"${value:,.2f}" if isinstance(value, (int, float)) else value
 
 # Step 3: Fill the 1040 PDF
 def fill_1040_pdf(template_path, data):
@@ -123,10 +128,12 @@ def fill_1040_pdf(template_path, data):
             if annotation.T:
                 field_name = annotation.T[1:-1]
                 if field_name in data:
-                    annotation.V = data[field_name]
+                    annotation.V = f"({data[field_name]})"
+                    annotation.AP = None  # Ensure proper display
 
+    # Flatten the PDF (makes the filled data permanent)
     buffer = io.BytesIO()
-    PdfWriter(buffer, trailer=template_pdf).write()
+    PdfWriter(buffer, trailer=template_pdf, verbose=True).write()
     buffer.seek(0)
     return buffer
 
@@ -156,3 +163,4 @@ if st.button("Generate and Download Forms"):
     st.download_button("Download All 1040 Forms (ZIP)", data=zip_buffer, file_name="realistic_1040_forms.zip", mime="application/zip")
 
     st.success(f"{num_forms} Realistic Form 1040 PDFs Generated and Ready for Download! ✅")
+
