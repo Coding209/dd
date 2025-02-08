@@ -4,7 +4,7 @@ import zipfile
 import io
 import random
 from faker import Faker
-from pdfrw import PdfReader, PdfWriter, PageMerge
+from pdfrw import PdfReader, PdfWriter
 
 # Initialize Faker for generating synthetic data
 fake = Faker()
@@ -20,21 +20,20 @@ def generate_synthetic_1040():
         "f1_06(0)": fake.state_abbr(),  # State
         "f1_07(0)": fake.zipcode(),  # ZIP Code
         "f1_08(0)": random.choice(["Single", "Married Filing Jointly", "Married Filing Separately", "Head of Household"]),
-        "f1_09(0)": round(random.uniform(15000, 120000), 2),  # Wages
-        "f1_10(0)": round(random.uniform(0, 5000), 2),  # Interest Income
-        "f1_11(0)": round(random.uniform(15000, 120000), 2),  # Adjusted Gross Income
-        "f1_12(0)": round(random.uniform(10000, 100000), 2),  # Taxable Income
-        "f1_13(0)": round(random.uniform(500, 20000), 2),  # Total Tax
-        "f1_14(0)": round(random.uniform(500, 15000), 2),  # Federal Income Tax Withheld
-        "f1_15(0)": round(random.uniform(0, 5000), 2),  # Refund Amount
-        "f1_16(0)": round(random.uniform(0, 5000), 2),  # Amount Owed
+        "f1_09(0)": str(round(random.uniform(15000, 120000), 2)),  # Wages
+        "f1_10(0)": str(round(random.uniform(0, 5000), 2)),  # Interest Income
+        "f1_11(0)": str(round(random.uniform(15000, 120000), 2)),  # Adjusted Gross Income
+        "f1_12(0)": str(round(random.uniform(10000, 100000), 2)),  # Taxable Income
+        "f1_13(0)": str(round(random.uniform(500, 20000), 2)),  # Total Tax
+        "f1_14(0)": str(round(random.uniform(500, 15000), 2)),  # Federal Income Tax Withheld
+        "f1_15(0)": str(round(random.uniform(0, 5000), 2)),  # Refund Amount
+        "f1_16(0)": str(round(random.uniform(0, 5000), 2)),  # Amount Owed
     }
 
 # Function to fill the IRS 1040 PDF
 def fill_1040_pdf(template_path, data):
     template_pdf = PdfReader(template_path)
     
-    # Get the first page
     for page in template_pdf.pages:
         annotations = page.Annots or []
         for annotation in annotations:
@@ -56,9 +55,10 @@ st.write("This tool generates **synthetic IRS Form 1040 PDFs** with random taxpa
 # User input for number of forms
 num_forms = st.number_input("How many 1040 forms do you want to generate?", min_value=1, max_value=50, value=1)
 
-# Upload the fillable Form 1040 PDF template
-template_path = "f1040.pdf"  # Make sure this file exists in your repo
+# Define the template PDF path
+template_path = "f1040.pdf"  # Ensure the fillable PDF exists in your repo
 
+# Button to generate and download 1040 forms
 if st.button("Generate and Download Forms"):
     pdf_files = []
     
@@ -67,6 +67,7 @@ if st.button("Generate and Download Forms"):
         pdf_buffer = fill_1040_pdf(template_path, synthetic_data)
         pdf_files.append((f"synthetic_1040_{i+1}.pdf", pdf_buffer.getvalue()))
     
+    # Create a ZIP file containing all generated PDFs
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w") as zipf:
         for filename, pdf_data in pdf_files:
@@ -74,6 +75,7 @@ if st.button("Generate and Download Forms"):
     
     zip_buffer.seek(0)
 
+    # Provide download button for the ZIP file
     st.download_button(
         label="Download All 1040 Forms (ZIP)",
         data=zip_buffer,
@@ -83,6 +85,3 @@ if st.button("Generate and Download Forms"):
 
     st.success(f"{num_forms} Form 1040 PDFs Generated and Ready for Download! ✅")
 
-    )
-
-    st.success(f"{num_forms} Form 1040 PDFs Generated and Ready for Download! ✅")
