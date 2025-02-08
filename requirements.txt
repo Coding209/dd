@@ -1,0 +1,5 @@
+streamlit
+pymupdf
+faker
+pandas
+zipfile36
