@@ -6,43 +6,72 @@ import random
 from faker import Faker
 from pdfrw import PdfReader, PdfWriter
 
-# Initialize Faker for generating synthetic data
+# Initialize Faker for generating synthetic tax data
 fake = Faker()
 
-# Generate synthetic Form 1040 data
-def generate_synthetic_1040():
-    return {
-        "f1_01(0)": fake.first_name(),  # First Name
-        "f1_02(0)": fake.last_name(),  # Last Name
-        "f1_03(0)": f"{random.randint(100, 999)}-{random.randint(10, 99)}-{random.randint(1000, 9999)}",  # SSN
-        "f1_04(0)": fake.street_address(),  # Address
-        "f1_05(0)": fake.city(),  # City
-        "f1_06(0)": fake.state_abbr(),  # State
-        "f1_07(0)": fake.zipcode(),  # ZIP Code
-        "f1_08(0)": random.choice(["Single", "Married Filing Jointly", "Married Filing Separately", "Head of Household"]),
-        "f1_09(0)": str(round(random.uniform(15000, 120000), 2)),  # Wages
-        "f1_10(0)": str(round(random.uniform(0, 5000), 2)),  # Interest Income
-        "f1_11(0)": str(round(random.uniform(15000, 120000), 2)),  # Adjusted Gross Income
-        "f1_12(0)": str(round(random.uniform(10000, 100000), 2)),  # Taxable Income
-        "f1_13(0)": str(round(random.uniform(500, 20000), 2)),  # Total Tax
-        "f1_14(0)": str(round(random.uniform(500, 15000), 2)),  # Federal Income Tax Withheld
-        "f1_15(0)": str(round(random.uniform(0, 5000), 2)),  # Refund Amount
-        "f1_16(0)": str(round(random.uniform(0, 5000), 2)),  # Amount Owed
-    }
+# Define the template PDF path (ensure this file exists in your repo)
+TEMPLATE_PATH = "f1040.pdf"
 
-# Function to fill the IRS 1040 PDF
+# Step 1: Extract actual form field names from the 1040 PDF
+def extract_pdf_fields(template_path):
+    pdf = PdfReader(template_path)
+    fields = {}
+
+    for page in pdf.pages:
+        if page.Annots:
+            for annotation in page.Annots:
+                if annotation.T:
+                    field_name = annotation.T[1:-1]  # Extract field name
+                    fields[field_name] = ""  # Store as key for filling
+
+    return fields
+
+# Step 2: Generate synthetic data based on extracted field names
+def generate_synthetic_1040(fields):
+    tax_data = {}
+    
+    # Map field names dynamically
+    for field in fields:
+        if "first name" in field.lower():
+            tax_data[field] = fake.first_name()
+        elif "last name" in field.lower():
+            tax_data[field] = fake.last_name()
+        elif "social security" in field.lower():
+            tax_data[field] = f"{random.randint(100, 999)}-{random.randint(10, 99)}-{random.randint(1000, 9999)}"
+        elif "address" in field.lower():
+            tax_data[field] = fake.street_address()
+        elif "city" in field.lower():
+            tax_data[field] = fake.city()
+        elif "state" in field.lower():
+            tax_data[field] = fake.state_abbr()
+        elif "zip" in field.lower():
+            tax_data[field] = fake.zipcode()
+        elif "income" in field.lower():
+            tax_data[field] = str(round(random.uniform(15000, 120000), 2))
+        elif "tax" in field.lower():
+            tax_data[field] = str(round(random.uniform(500, 20000), 2))
+        elif "refund" in field.lower():
+            tax_data[field] = str(round(random.uniform(0, 5000), 2))
+        elif "owed" in field.lower():
+            tax_data[field] = str(round(random.uniform(0, 5000), 2))
+        else:
+            tax_data[field] = fake.word()  # Default random data
+    
+    return tax_data
+
+# Step 3: Fill the 1040 PDF using extracted field names
 def fill_1040_pdf(template_path, data):
     template_pdf = PdfReader(template_path)
-    
+
     for page in template_pdf.pages:
         annotations = page.Annots or []
         for annotation in annotations:
             if annotation.T:
-                field_name = annotation.T[1:-1]  # Extract field name
+                field_name = annotation.T[1:-1]  # Extract the field name
                 if field_name in data:
-                    annotation.V = data[field_name]  # Fill field with synthetic data
+                    annotation.V = data[field_name]  # Fill form field with synthetic data
 
-    # Save the filled PDF to a buffer
+    # Save filled PDF to a buffer
     buffer = io.BytesIO()
     PdfWriter(buffer, trailer=template_pdf).write()
     buffer.seek(0)
@@ -55,16 +84,18 @@ st.write("This tool generates **synthetic IRS Form 1040 PDFs** with random taxpa
 # User input for number of forms
 num_forms = st.number_input("How many 1040 forms do you want to generate?", min_value=1, max_value=50, value=1)
 
-# Define the template PDF path
-template_path = "f1040.pdf"  # Ensure the fillable PDF exists in your repo
-
-# Button to generate and download 1040 forms
 if st.button("Generate and Download Forms"):
     pdf_files = []
     
+    # Step 1: Extract field names from the fillable PDF
+    extracted_fields = extract_pdf_fields(TEMPLATE_PATH)
+
     for i in range(num_forms):
-        synthetic_data = generate_synthetic_1040()
-        pdf_buffer = fill_1040_pdf(template_path, synthetic_data)
+        # Step 2: Generate synthetic data for the extracted fields
+        synthetic_data = generate_synthetic_1040(extracted_fields)
+
+        # Step 3: Fill the 1040 form with synthetic data
+        pdf_buffer = fill_1040_pdf(TEMPLATE_PATH, synthetic_data)
         pdf_files.append((f"synthetic_1040_{i+1}.pdf", pdf_buffer.getvalue()))
     
     # Create a ZIP file containing all generated PDFs
@@ -79,9 +110,10 @@ if st.button("Generate and Download Forms"):
     st.download_button(
         label="Download All 1040 Forms (ZIP)",
         data=zip_buffer,
-        file_name="synthetic_1040_forms.zip",
+        file_name="f1040.pdf",
         mime="application/zip"
     )
 
     st.success(f"{num_forms} Form 1040 PDFs Generated and Ready for Download! ✅")
+
 
