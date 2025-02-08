@@ -1,19 +1,19 @@
 import streamlit as st
-import pandas as pd
 import zipfile
 import io
 import random
 from faker import Faker
 import fitz  # PyMuPDF
 
-# Initialize Faker
+# Initialize Faker for realistic tax data
 fake = Faker()
 
-# Define the fillable PDF template
+# Define the fillable PDF template path
 TEMPLATE_PATH = "f1040.pdf"  # Ensure this exists in your repo
 
 # Step 1: Extract fillable field names from the 1040 PDF
 def extract_pdf_fields(template_path):
+    """Extract form field names from a fillable PDF"""
     doc = fitz.open(template_path)
     fields = {}
 
@@ -24,21 +24,21 @@ def extract_pdf_fields(template_path):
 
     return fields
 
-# Step 2: Generate **realistic** synthetic tax data based on IRS logic
+# Step 2: Generate realistic synthetic tax data
 def generate_realistic_1040(fields):
     tax_data = {}
 
-    # Filing Status: Assign based on age & marital status
+    # Filing Status
     filing_status = random.choice(["Single", "Married Filing Jointly", "Married Filing Separately", "Head of Household"])
     
     # Income Generation
-    wages = round(random.uniform(20000, 150000), 2)  # Based on US median incomes
+    wages = round(random.uniform(20000, 150000), 2)
     interest_income = round(random.uniform(0, 5000), 2)
     dividends = round(random.uniform(0, 3000), 2)
-    social_security = round(random.uniform(0, 20000), 2) if random.random() > 0.7 else 0  # 30% chance of Social Security benefits
-    
+    social_security = round(random.uniform(0, 20000), 2) if random.random() > 0.7 else 0  # 30% chance
+
     total_income = wages + interest_income + dividends + social_security
-    
+
     # Standard Deduction (based on filing status)
     deductions = {
         "Single": 14600,
@@ -48,7 +48,7 @@ def generate_realistic_1040(fields):
     }
     
     deduction_amount = deductions[filing_status]
-    taxable_income = max(total_income - deduction_amount, 0)  # Ensure non-negative
+    taxable_income = max(total_income - deduction_amount, 0)
 
     # Federal Tax Calculation (simplified tax bracket)
     if taxable_income < 11000:
@@ -60,17 +60,13 @@ def generate_realistic_1040(fields):
     else:
         tax_due = 16290 + (taxable_income - 95375) * 0.24
 
-    federal_tax_withheld = round(tax_due * random.uniform(0.7, 1.3), 2)  # Withheld tax may be overpaid or underpaid
-    
-    # Refund or Amount Owed
-    if federal_tax_withheld > tax_due:
-        refund_amount = federal_tax_withheld - tax_due
-        amount_owed = 0
-    else:
-        refund_amount = 0
-        amount_owed = tax_due - federal_tax_withheld
+    federal_tax_withheld = round(tax_due * random.uniform(0.7, 1.3), 2)
 
-    # Assign fields dynamically
+    # Refund or Amount Owed
+    refund_amount = max(0, federal_tax_withheld - tax_due)
+    amount_owed = max(0, tax_due - federal_tax_withheld)
+
+    # Assign formatted data to form fields
     for field in fields:
         if "first name" in field.lower():
             tax_data[field] = fake.first_name()
@@ -111,24 +107,25 @@ def generate_realistic_1040(fields):
 
     return tax_data
 
-# Format monetary values correctly
+# Format currency correctly
 def format_currency(value):
     """Format numbers as currency with a dollar sign and commas."""
     return f"${value:,.2f}" if isinstance(value, (int, float)) else value
 
 # Step 3: Fill the 1040 PDF
 def fill_1040_pdf(template_path, data):
+    """Fill the fillable PDF with data and flatten it"""
     doc = fitz.open(template_path)
 
     for page in doc:
         for widget in page.widgets():
             if widget.field_name and widget.field_name in data:
-                widget.text = data[widget.field_name]  # Assign value correctly
+                widget.text = data[widget.field_name]  # Assign value
                 widget.update()
 
     # Flatten the PDF (makes the filled data permanent)
     buffer = io.BytesIO()
-    doc.save(buffer, incremental=True, encryption=fitz.PDF_ENCRYPT_KEEP)
+    doc.save(buffer)
     buffer.seek(0)
     return buffer
 
