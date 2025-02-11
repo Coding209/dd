@@ -4,9 +4,25 @@ import random
 import fitz  # PyMuPDF for PDF handling
 from faker import Faker
 import io
+import os
+import requests
 
 # Initialize Faker
 fake = Faker()
+
+# URL of the IRS Form 941 Schedule D
+FORM_URL = "https://www.irs.gov/pub/irs-pdf/f941sd.pdf"
+TEMPLATE_PDF_PATH = "f941sd_template.pdf"
+
+# Function to download the PDF form
+def download_pdf(url, path):
+    response = requests.get(url)
+    if response.status_code == 200:
+        with open(path, "wb") as f:
+            f.write(response.content)
+        st.success(f"Downloaded the form to {path}")
+    else:
+        st.error("Failed to download the form. Please check the URL.")
 
 # Generate Synthetic Payroll Tax Data
 def generate_synthetic_data(num_entries=1):
@@ -28,7 +44,11 @@ def generate_synthetic_data(num_entries=1):
     return df
 
 # Function to Fill PDF
-def fill_pdf(data, template_pdf="941_schedule_d_template.pdf"):
+def fill_pdf(data, template_pdf=TEMPLATE_PDF_PATH):
+    if not os.path.exists(template_pdf):
+        st.error("Template PDF not found. Please ensure the form is downloaded.")
+        return None
+
     doc = fitz.open(template_pdf)  # Load the PDF template
     page = doc[0]  # Assume data goes on the first page
 
@@ -58,6 +78,11 @@ def fill_pdf(data, template_pdf="941_schedule_d_template.pdf"):
 st.title("📄 IRS Form 941 Schedule D Auto-Fill")
 st.write("Generate synthetic data or input manually to fill out Form 941 Schedule D.")
 
+# Download the form if it doesn't exist
+if not os.path.exists(TEMPLATE_PDF_PATH):
+    st.info("Form template not found locally. Downloading...")
+    download_pdf(FORM_URL, TEMPLATE_PDF_PATH)
+
 # Sidebar: User Options
 option = st.sidebar.selectbox("Choose an option:", ["Generate Synthetic Data", "Manual Input"])
 
@@ -73,13 +98,14 @@ if option == "Generate Synthetic Data":
         # Generate the PDF
         pdf_file = fill_pdf(selected_record)
 
-        # Provide download link
-        st.download_button(
-            label="📥 Download Filled Form 941 Schedule D",
-            data=pdf_file,
-            file_name="941_schedule_d_filled.pdf",
-            mime="application/pdf"
-        )
+        if pdf_file:
+            # Provide download link
+            st.download_button(
+                label="📥 Download Filled Form 941 Schedule D",
+                data=pdf_file,
+                file_name="941_schedule_d_filled.pdf",
+                mime="application/pdf"
+            )
 
 elif option == "Manual Input":
     st.subheader("Enter Data Manually")
@@ -96,10 +122,12 @@ elif option == "Manual Input":
 
     if st.button("Generate PDF"):
         pdf_file = fill_pdf(manual_data)
-        st.download_button(
-            label="📥 Download Filled Form 941 Schedule D",
-            data=pdf_file,
-            file_name="941_schedule_d_filled.pdf",
-            mime="application/pdf"
-        )
+        if pdf_file:
+            st.download_button(
+                label="📥 Download Filled Form 941 Schedule D",
+                data=pdf_file,
+                file_name="941_schedule_d_filled.pdf",
+                mime="application/pdf"
+            )
+
 
