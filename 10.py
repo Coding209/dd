@@ -24,14 +24,17 @@ def download_pdf(url, path):
     else:
         st.error("❌ Failed to download the form. Please check the URL.")
 
-# Function to extract fillable form field names
+# Function to extract fillable form field names safely
 def extract_form_fields(pdf_path):
     doc = fitz.open(pdf_path)
     field_names = {}
     for page in doc:
         for field in page.widgets():  # Get form fields
-            if field.field_name:
-                field_names[field.field_name] = field.text  # Capture existing field values
+            if field.field_name:  # Ensure the field has a name
+                try:
+                    field_names[field.field_name] = field.text if hasattr(field, 'text') else ""
+                except AttributeError:
+                    field_names[field.field_name] = ""  # Handle missing text attribute safely
     return field_names
 
 # Generate Synthetic Payroll Tax Data
