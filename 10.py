@@ -4,6 +4,7 @@ import random
 import io
 from faker import Faker
 from pypdf import PdfReader, PdfWriter
+from pypdf.generic import NameObject
 import requests
 
 # Initialize Faker
@@ -25,14 +26,14 @@ def download_template():
 def generate_data():
     """Generate synthetic form data."""
     return {
-        "f1_1": fake.unique.random_number(digits=9, fix_len=True),  # EIN
-        "f1_2": fake.company(),  # Business Name
-        "f1_3": str(random.randint(2020, 2024)),  # Year
-        "f1_4": str(random.randint(1, 4)),  # Quarter
-        "f1_5": f"{random.uniform(50000, 200000):.2f}",  # Total Wages
-        "f1_6": f"{random.uniform(5000, 25000):.2f}",  # Withheld Taxes
-        "f1_7": f"{random.uniform(-500, 500):.2f}",  # Adjustments
-        "f1_8": f"{random.uniform(6000, 30000):.2f}"  # Total Liability
+        "topmostSubform[0].Page1[0].f1_01[0]": fake.unique.random_number(digits=9, fix_len=True),  # EIN
+        "topmostSubform[0].Page1[0].f1_02[0]": fake.company(),  # Business Name
+        "topmostSubform[0].Page1[0].f1_03[0]": str(random.randint(2020, 2024)),  # Year
+        "topmostSubform[0].Page1[0].f1_04[0]": str(random.randint(1, 4)),  # Quarter
+        "topmostSubform[0].Page1[0].f1_05[0]": f"{random.uniform(50000, 200000):.2f}",  # Total Wages
+        "topmostSubform[0].Page1[0].f1_06[0]": f"{random.uniform(5000, 25000):.2f}",  # Withheld Taxes
+        "topmostSubform[0].Page1[0].f1_07[0]": f"{random.uniform(-500, 500):.2f}",  # Adjustments
+        "topmostSubform[0].Page1[0].f1_08[0]": f"{random.uniform(6000, 30000):.2f}"  # Total Liability
     }
 
 def create_filled_pdf(data):
@@ -42,17 +43,11 @@ def create_filled_pdf(data):
         reader = PdfReader("template.pdf")
         writer = PdfWriter()
 
-        # Copy the AcroForm dictionary
-        if "/AcroForm" in reader.trailer["/Root"]:
-            writer._root_object.update({
-                NameObject("/AcroForm"): reader.trailer["/Root"]["/AcroForm"]
-            })
-
-        # Get the first page and its form
+        # Get the first page
         page = reader.pages[0]
         writer.add_page(page)
         
-        # Copy form resources from reader to writer
+        # Clone the form from the reader
         writer.clone_reader_document_root(reader)
         
         # Update form fields
@@ -108,6 +103,8 @@ if st.checkbox("Show Debug Information"):
         if "/AcroForm" in reader.trailer["/Root"]:
             st.write("Form structure found in PDF")
             form_fields = reader.get_fields()
-            st.write("Form fields:", form_fields)
+            for field_name, field_value in form_fields.items():
+                st.write(f"Field: {field_name}")
+                st.write(f"Type: {type(field_value)}")
     except Exception as e:
         st.error(f"Error reading PDF fields: {str(e)}")
