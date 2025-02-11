@@ -5,6 +5,7 @@ import os
 from faker import Faker
 from pypdf import PdfReader, PdfWriter
 import requests
+from datetime import datetime
 
 # Initialize Faker
 fake = Faker()
@@ -27,16 +28,58 @@ def download_template():
         return False
 
 def generate_data():
-    """Generate synthetic form data."""
+    """Generate synthetic form data matching the actual form fields."""
+    # Generate EIN segments
+    ein_first = str(random.randint(10, 99))
+    ein_second = str(random.randint(1000000, 9999999))
+    
+    # Generate address components
+    street_num = str(random.randint(100, 9999))
+    street_name = fake.street_name()
+    city = fake.city()
+    state = fake.state_abbr()
+    zip_code = fake.zipcode()
+    
     return {
-        "f1_01[0]": str(fake.unique.random_number(digits=9, fix_len=True)),  # EIN
-        "f1_02[0]": str(fake.company()),  # Business Name
-        "f1_03[0]": str(random.randint(2020, 2024)),  # Year
-        "f1_04[0]": str(random.randint(1, 4)),  # Quarter
-        "f1_05[0]": str(round(random.uniform(50000, 200000), 2)),  # Total Wages
-        "f1_06[0]": str(round(random.uniform(5000, 25000), 2)),  # Withheld Taxes
-        "f1_07[0]": str(round(random.uniform(-500, 500), 2)),  # Adjustments
-        "f1_08[0]": str(round(random.uniform(6000, 30000), 2))  # Total Liability
+        # Main company info
+        "topmostSubform[0].Page1[0].EntityArea[0].f1_1[0]": ein_first,  # First part of EIN
+        "topmostSubform[0].Page1[0].EntityArea[0].f1_2[0]": ein_second,  # Second part of EIN
+        "topmostSubform[0].Page1[0].EntityArea[0].f1_3[0]": fake.company(),  # Company name
+        "topmostSubform[0].Page1[0].EntityArea[0].f1_4[0]": fake.company_suffix(),  # Trade name
+        
+        # Address fields
+        "topmostSubform[0].Page1[0].EntityArea[0].f1_5[0]": f"{street_num} {street_name}",  # Street address
+        "topmostSubform[0].Page1[0].EntityArea[0].f1_6[0]": fake.secondary_address(),  # Suite/Room
+        "topmostSubform[0].Page1[0].EntityArea[0].f1_7[0]": city,  # City
+        "topmostSubform[0].Page1[0].EntityArea[0].f1_8[0]": state,  # State
+        "topmostSubform[0].Page1[0].EntityArea[0].f1_9[0]": zip_code,  # ZIP
+        "topmostSubform[0].Page1[0].EntityArea[0].f1_10[0]": fake.phone_number(),  # Phone
+        
+        # Tax Year
+        "topmostSubform[0].Page1[0].YearArea[0].f1_11[0]": str(random.randint(2020, 2024)),
+        
+        # Type of Submission checkboxes
+        "topmostSubform[0].Page1[0].TypeArea[0].c1_1[0]": "1",  # Original submission
+        "topmostSubform[0].Page1[0].TypeArea[0].c1_1[1]": "0",  # Corrected submission
+        
+        # Filing Status checkboxes
+        "topmostSubform[0].Page1[0].StatusArea[0].c1_2[0]": "1",  # Statutory merger checkbox
+        "topmostSubform[0].Page1[0].StatusArea[0].c1_3[0]": "1",  # Acquired corporation
+        
+        # Effective Date
+        "topmostSubform[0].Page1[0].DateArea[0].f1_12[0]": datetime.now().strftime("%m/%d/%Y"),
+        
+        # Other Party Information
+        "topmostSubform[0].Page1[0].OtherPartyArea[0].f1_13[0]": str(random.randint(10, 99)),  # Other EIN first part
+        "topmostSubform[0].Page1[0].OtherPartyArea[0].f1_14[0]": str(random.randint(1000000, 9999999)),  # Other EIN second part
+        "topmostSubform[0].Page1[0].OtherPartyArea[0].f1_15[0]": fake.company(),  # Other party name
+        "topmostSubform[0].Page1[0].OtherPartyArea[0].f1_16[0]": fake.company_suffix(),  # Other trade name
+        "topmostSubform[0].Page1[0].OtherPartyArea[0].f1_17[0]": f"{fake.street_address()}",  # Other address
+        "topmostSubform[0].Page1[0].OtherPartyArea[0].f1_18[0]": fake.secondary_address(),  # Other suite
+        "topmostSubform[0].Page1[0].OtherPartyArea[0].f1_19[0]": fake.city(),  # Other city
+        "topmostSubform[0].Page1[0].OtherPartyArea[0].f1_20[0]": fake.state_abbr(),  # Other state
+        "topmostSubform[0].Page1[0].OtherPartyArea[0].f1_21[0]": fake.zipcode(),  # Other ZIP
+        "topmostSubform[0].Page1[0].OtherPartyArea[0].f1_22[0]": fake.phone_number()  # Other phone
     }
 
 def create_filled_pdf(data):
