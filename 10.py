@@ -42,11 +42,20 @@ def create_filled_pdf(data):
         reader = PdfReader("template.pdf")
         writer = PdfWriter()
 
-        # Get the first page
-        page = reader.pages[0]
+        # Copy the AcroForm dictionary
+        if "/AcroForm" in reader.trailer["/Root"]:
+            writer._root_object.update({
+                NameObject("/AcroForm"): reader.trailer["/Root"]["/AcroForm"]
+            })
 
-        # Update form fields
+        # Get the first page and its form
+        page = reader.pages[0]
         writer.add_page(page)
+        
+        # Copy form resources from reader to writer
+        writer.clone_reader_document_root(reader)
+        
+        # Update form fields
         writer.update_page_form_field_values(writer.pages[0], data)
 
         # Save to buffer
@@ -57,6 +66,7 @@ def create_filled_pdf(data):
         return output_buffer
     except Exception as e:
         st.error(f"Error creating PDF: {str(e)}")
+        st.write("Detailed error information:", str(e))
         return None
 
 # Main Streamlit app
@@ -93,5 +103,11 @@ if st.checkbox("Show Debug Information"):
         reader = PdfReader("template.pdf")
         fields = reader.get_fields()
         st.write("Available PDF Fields:", fields.keys())
+        
+        # Show more detailed form structure
+        if "/AcroForm" in reader.trailer["/Root"]:
+            st.write("Form structure found in PDF")
+            form_fields = reader.get_fields()
+            st.write("Form fields:", form_fields)
     except Exception as e:
         st.error(f"Error reading PDF fields: {str(e)}")
