@@ -1,5 +1,4 @@
 import streamlit as st
-import pandas as pd
 import random
 import io
 import os
@@ -29,25 +28,16 @@ def download_template():
 
 def generate_data():
     """Generate synthetic form data."""
-    data = {
-        "f1_01[0]": fake.unique.random_number(digits=9, fix_len=True),  # EIN
-        "f1_02[0]": fake.company(),  # Business Name
+    return {
+        "f1_01[0]": str(fake.unique.random_number(digits=9, fix_len=True)),  # EIN
+        "f1_02[0]": str(fake.company()),  # Business Name
         "f1_03[0]": str(random.randint(2020, 2024)),  # Year
         "f1_04[0]": str(random.randint(1, 4)),  # Quarter
-        "f1_05[0]": f"{random.uniform(50000, 200000):.2f}",  # Total Wages
-        "f1_06[0]": f"{random.uniform(5000, 25000):.2f}",  # Withheld Taxes
-        "f1_07[0]": f"{random.uniform(-500, 500):.2f}",  # Adjustments
-        "f1_08[0]": f"{random.uniform(6000, 30000):.2f}"  # Total Liability
+        "f1_05[0]": str(round(random.uniform(50000, 200000), 2)),  # Total Wages
+        "f1_06[0]": str(round(random.uniform(5000, 25000), 2)),  # Withheld Taxes
+        "f1_07[0]": str(round(random.uniform(-500, 500), 2)),  # Adjustments
+        "f1_08[0]": str(round(random.uniform(6000, 30000), 2))  # Total Liability
     }
-    
-    # Add alternative field names
-    alt_data = {}
-    for key, value in data.items():
-        alt_data[f"topmostSubform[0].Page1[0].{key}"] = value
-        alt_data[key.replace("[0]", "")] = value
-        alt_data[key] = value
-    
-    return alt_data
 
 def create_filled_pdf(data):
     """Create a filled PDF using the template and provided data."""
@@ -58,30 +48,22 @@ def create_filled_pdf(data):
     try:
         # Read the template
         reader = PdfReader("template.pdf")
+        writer = PdfWriter()
         
-        # Verify the PDF has pages
+        # Get the first page
         if len(reader.pages) == 0:
             st.error("The template PDF appears to be empty")
             return None
             
-        # Debug info about the PDF
-        st.write("PDF Information:")
-        st.write(f"Number of pages: {len(reader.pages)}")
-        st.write("Fields found:", reader.get_fields())
-        
-        # Create writer and copy page
-        writer = PdfWriter()
-        writer.add_page(reader.pages[0])
-        
-        # Copy form fields
-        writer.clone_reader_document_root(reader)
-        
+        # Copy the first page
+        page = reader.pages[0]
+        writer.add_page(page)
+
         # Try to update fields
-        writer.update_page_form_field_values(
-            writer.pages[0],
-            data,
-            auto_regenerate=False
-        )
+        try:
+            writer.update_page_form_field_values(writer.pages[0], data)
+        except Exception as e:
+            st.warning(f"Warning while updating fields: {str(e)}")
         
         # Save to buffer
         output_buffer = io.BytesIO()
@@ -106,22 +88,16 @@ if 'template_downloaded' not in st.session_state:
     else:
         st.session_state.template_downloaded = download_template()
 
-# Show debug information first to help diagnose issues
-st.subheader("Debug Information")
+# Show debug information
 if st.checkbox("Show PDF Field Information"):
     try:
         if os.path.exists("template.pdf"):
             reader = PdfReader("template.pdf")
             fields = reader.get_fields()
-            st.write("PDF Fields found:", fields)
             if fields:
-                st.write("Individual field names:")
-                for field_name in fields.keys():
-                    st.write(f"- {field_name}")
+                st.write("PDF Fields found:", fields.keys())
             else:
                 st.warning("No fillable fields found in the PDF")
-        else:
-            st.error("Template PDF file not found")
     except Exception as e:
         st.error(f"Error reading PDF fields: {str(e)}")
 
