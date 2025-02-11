@@ -4,3 +4,4 @@ faker
 pandas
 zipfile36
 pdfrw
+pypdf
