@@ -29,58 +29,66 @@ def download_template():
 
 def generate_data():
     """Generate synthetic form data matching the actual form fields."""
-    # Generate EIN segments
-    ein_first = str(random.randint(10, 99))
-    ein_second = str(random.randint(1000000, 9999999))
+    # Generate base data
+    ein = f"{random.randint(10, 99)}-{random.randint(1000000, 9999999)}"
+    company_name = fake.company()
+    year = str(random.randint(2020, 2024))
     
-    # Generate address components
-    street_num = str(random.randint(100, 9999))
-    street_name = fake.street_name()
-    city = fake.city()
-    state = fake.state_abbr()
-    zip_code = fake.zipcode()
+    # Try multiple field name variations
+    data = {}
     
-    return {
-        # Main company info
-        "topmostSubform[0].Page1[0].EntityArea[0].f1_1[0]": ein_first,  # First part of EIN
-        "topmostSubform[0].Page1[0].EntityArea[0].f1_2[0]": ein_second,  # Second part of EIN
-        "topmostSubform[0].Page1[0].EntityArea[0].f1_3[0]": fake.company(),  # Company name
-        "topmostSubform[0].Page1[0].EntityArea[0].f1_4[0]": fake.company_suffix(),  # Trade name
+    # EIN field variations
+    ein_fields = [
+        "EIN", "ein", "EmployerID", "employerId",
+        "form1.#subform[0].#area[0].EIN[0]",
+        "form1.#subform[0].EmployerID[0]",
+        "f1_01[0]", "f1_02[0]"
+    ]
+    for field in ein_fields:
+        data[field] = ein
         
-        # Address fields
-        "topmostSubform[0].Page1[0].EntityArea[0].f1_5[0]": f"{street_num} {street_name}",  # Street address
-        "topmostSubform[0].Page1[0].EntityArea[0].f1_6[0]": fake.secondary_address(),  # Suite/Room
-        "topmostSubform[0].Page1[0].EntityArea[0].f1_7[0]": city,  # City
-        "topmostSubform[0].Page1[0].EntityArea[0].f1_8[0]": state,  # State
-        "topmostSubform[0].Page1[0].EntityArea[0].f1_9[0]": zip_code,  # ZIP
-        "topmostSubform[0].Page1[0].EntityArea[0].f1_10[0]": fake.phone_number(),  # Phone
+    # Name field variations
+    name_fields = [
+        "Name", "name", "BusinessName", "businessName",
+        "form1.#subform[0].#area[0].Name[0]",
+        "form1.#subform[0].BusinessName[0]",
+        "f1_03[0]"
+    ]
+    for field in name_fields:
+        data[field] = company_name
         
-        # Tax Year
-        "topmostSubform[0].Page1[0].YearArea[0].f1_11[0]": str(random.randint(2020, 2024)),
+    # Year field variations
+    year_fields = [
+        "Year", "year", "TaxYear", "taxYear",
+        "form1.#subform[0].#area[0].Year[0]",
+        "form1.#subform[0].TaxYear[0]",
+        "f1_11[0]"
+    ]
+    for field in year_fields:
+        data[field] = year
         
-        # Type of Submission checkboxes
-        "topmostSubform[0].Page1[0].TypeArea[0].c1_1[0]": "1",  # Original submission
-        "topmostSubform[0].Page1[0].TypeArea[0].c1_1[1]": "0",  # Corrected submission
-        
-        # Filing Status checkboxes
-        "topmostSubform[0].Page1[0].StatusArea[0].c1_2[0]": "1",  # Statutory merger checkbox
-        "topmostSubform[0].Page1[0].StatusArea[0].c1_3[0]": "1",  # Acquired corporation
-        
-        # Effective Date
-        "topmostSubform[0].Page1[0].DateArea[0].f1_12[0]": datetime.now().strftime("%m/%d/%Y"),
-        
-        # Other Party Information
-        "topmostSubform[0].Page1[0].OtherPartyArea[0].f1_13[0]": str(random.randint(10, 99)),  # Other EIN first part
-        "topmostSubform[0].Page1[0].OtherPartyArea[0].f1_14[0]": str(random.randint(1000000, 9999999)),  # Other EIN second part
-        "topmostSubform[0].Page1[0].OtherPartyArea[0].f1_15[0]": fake.company(),  # Other party name
-        "topmostSubform[0].Page1[0].OtherPartyArea[0].f1_16[0]": fake.company_suffix(),  # Other trade name
-        "topmostSubform[0].Page1[0].OtherPartyArea[0].f1_17[0]": f"{fake.street_address()}",  # Other address
-        "topmostSubform[0].Page1[0].OtherPartyArea[0].f1_18[0]": fake.secondary_address(),  # Other suite
-        "topmostSubform[0].Page1[0].OtherPartyArea[0].f1_19[0]": fake.city(),  # Other city
-        "topmostSubform[0].Page1[0].OtherPartyArea[0].f1_20[0]": fake.state_abbr(),  # Other state
-        "topmostSubform[0].Page1[0].OtherPartyArea[0].f1_21[0]": fake.zipcode(),  # Other ZIP
-        "topmostSubform[0].Page1[0].OtherPartyArea[0].f1_22[0]": fake.phone_number()  # Other phone
+    # Add additional data with various field name patterns
+    base_fields = {
+        "TradeName": fake.company_suffix(),
+        "Address": fake.street_address(),
+        "City": fake.city(),
+        "State": fake.state_abbr(),
+        "ZipCode": fake.zipcode(),
+        "PhoneNumber": fake.phone_number()
     }
+    
+    # Add variations of each base field
+    for base_name, value in base_fields.items():
+        variations = [
+            base_name,
+            base_name.lower(),
+            f"form1.#subform[0].{base_name}[0]",
+            f"form1.#subform[0].#area[0].{base_name}[0]"
+        ]
+        for field in variations:
+            data[field] = value
+    
+    return data
 
 def create_filled_pdf(data):
     """Create a filled PDF using the template and provided data."""
@@ -93,6 +101,11 @@ def create_filled_pdf(data):
         reader = PdfReader("template.pdf")
         writer = PdfWriter()
         
+        # Show available fields for debugging
+        fields = reader.get_fields()
+        if fields:
+            st.write("Available fields in PDF:", fields.keys())
+        
         # Get the first page
         if len(reader.pages) == 0:
             st.error("The template PDF appears to be empty")
@@ -104,7 +117,13 @@ def create_filled_pdf(data):
 
         # Try to update fields
         try:
+            # First attempt with direct field mapping
             writer.update_page_form_field_values(writer.pages[0], data)
+            
+            # Second attempt with alternative field names if needed
+            alt_data = {f"form1[0].{k}": v for k, v in data.items()}
+            writer.update_page_form_field_values(writer.pages[0], alt_data)
+            
         except Exception as e:
             st.warning(f"Warning while updating fields: {str(e)}")
         
@@ -131,18 +150,17 @@ if 'template_downloaded' not in st.session_state:
     else:
         st.session_state.template_downloaded = download_template()
 
-# Show debug information
-if st.checkbox("Show PDF Field Information"):
-    try:
-        if os.path.exists("template.pdf"):
-            reader = PdfReader("template.pdf")
-            fields = reader.get_fields()
-            if fields:
-                st.write("PDF Fields found:", fields.keys())
-            else:
-                st.warning("No fillable fields found in the PDF")
-    except Exception as e:
-        st.error(f"Error reading PDF fields: {str(e)}")
+# Show field information immediately for debugging
+try:
+    if os.path.exists("template.pdf"):
+        reader = PdfReader("template.pdf")
+        fields = reader.get_fields()
+        if fields:
+            st.write("Found fields in PDF:", fields.keys())
+        else:
+            st.warning("No fillable fields found in the PDF.")
+except Exception as e:
+    st.error(f"Error reading PDF fields: {str(e)}")
 
 # Generate Data button
 if st.button("Generate New Data"):
