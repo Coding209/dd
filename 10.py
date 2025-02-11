@@ -5,75 +5,66 @@ import os
 from pypdf import PdfReader, PdfWriter
 from faker import Faker
 import random
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import letter
 
 fake = Faker()
 
+def download_template():
+    """Download the IRS form template."""
+    url = "https://www.irs.gov/pub/irs-pdf/f941sd.pdf"
+    try:
+        response = requests.get(url)
+        if response.status_code == 200:
+            return io.BytesIO(response.content)
+        else:
+            st.error(f"Failed to download template. Status code: {response.status_code}")
+            return None
+    except Exception as e:
+        st.error(f"Failed to download template: {str(e)}")
+        return None
+
 def generate_data():
     """Generate synthetic form data."""
-    ein = f"{random.randint(10, 99)}-{random.randint(1000000, 9999999)}"
     return {
-        "ein": ein,
-        "business_name": fake.company(),
-        "trade_name": fake.company_suffix(),
-        "address": fake.street_address(),
-        "city": fake.city(),
-        "state": fake.state_abbr(),
-        "zip_code": fake.zipcode(),
-        "phone": fake.phone_number(),
-        "year": str(random.randint(2020, 2024))
+        "/ein1": str(random.randint(10, 99)),
+        "/ein2": str(random.randint(1000000, 9999999)),
+        "/name": fake.company(),
+        "/trade_name": fake.company_suffix(),
+        "/address": fake.street_address(),
+        "/city": fake.city(),
+        "/state": fake.state_abbr(),
+        "/zip": fake.zipcode(),
+        "/phone": fake.phone_number(),
+        "/year": str(random.randint(2020, 2024))
     }
 
-def create_overlay(data):
-    """Create a PDF overlay with the form data."""
-    packet = io.BytesIO()
-    c = canvas.Canvas(packet, pagesize=letter)
-    
-    # Position data on the form (coordinates need to be adjusted)
-    positions = {
-        "ein": (100, 700),
-        "business_name": (150, 660),
-        "trade_name": (150, 620),
-        "address": (150, 580),
-        "city": (150, 540),
-        "state": (350, 540),
-        "zip_code": (400, 540),
-        "phone": (150, 500),
-        "year": (500, 700)
-    }
-    
-    # Add text to the canvas
-    for field, value in data.items():
-        x, y = positions[field]
-        c.drawString(x, y, str(value))
-    
-    c.save()
-    packet.seek(0)
-    return packet
-
-def merge_pdfs(template_url, overlay_pdf):
-    """Merge the template with the overlay."""
+def create_filled_pdf(data):
+    """Create a filled PDF using the template."""
     try:
-        # Download template
-        response = requests.get(template_url)
-        if response.status_code != 200:
-            st.error("Failed to download template")
+        # Get template
+        template_buffer = download_template()
+        if not template_buffer:
             return None
             
-        # Create PDF readers
-        template_pdf = PdfReader(io.BytesIO(response.content))
-        overlay = PdfReader(overlay_pdf)
-        
-        # Create writer
+        # Create reader and writer
+        reader = PdfReader(template_buffer)
         writer = PdfWriter()
-        
-        # Merge pages
-        page = template_pdf.pages[0]
-        page.merge_page(overlay.pages[0])
+
+        # Get the first page
+        page = reader.pages[0]
         writer.add_page(page)
         
-        # Write to buffer
+        # Try to get form fields
+        fields = reader.get_fields()
+        if fields:
+            st.write("Found form fields:", fields.keys())
+        
+        # Try to fill in the form
+        writer.update_page_form_field_values(
+            writer.pages[0],
+            data
+        )
+        
+        # Save to buffer
         output_buffer = io.BytesIO()
         writer.write(output_buffer)
         output_buffer.seek(0)
@@ -81,11 +72,31 @@ def merge_pdfs(template_url, overlay_pdf):
         return output_buffer
         
     except Exception as e:
-        st.error(f"Error merging PDFs: {str(e)}")
+        st.error(f"Error creating PDF: {str(e)}")
+        import traceback
+        st.write("Detailed error:", traceback.format_exc())
         return None
 
 # Main Streamlit app
 st.title("IRS Form 941 Schedule D Generator")
+
+# Add debug toggle
+debug_mode = st.checkbox("Enable Debug Mode")
+
+# Show template information
+if debug_mode:
+    st.subheader("Template Information")
+    template_buffer = download_template()
+    if template_buffer:
+        reader = PdfReader(template_buffer)
+        st.write("PDF Version:", reader.pdf_version)
+        st.write("Number of Pages:", len(reader.pages))
+        st.write("Is Encrypted:", reader.is_encrypted)
+        fields = reader.get_fields()
+        if fields:
+            st.write("Form Fields Found:", list(fields.keys()))
+        else:
+            st.write("No form fields found in template")
 
 # Generate Data button
 if st.button("Generate New Data"):
@@ -99,13 +110,7 @@ if st.button("Create and Download PDF"):
     if not hasattr(st.session_state, 'form_data'):
         st.warning("Please generate data first before creating PDF.")
     else:
-        # Create overlay with form data
-        overlay_pdf = create_overlay(st.session_state.form_data)
-        
-        # Merge with template
-        url = "https://www.irs.gov/pub/irs-pdf/f941sd.pdf"
-        pdf_buffer = merge_pdfs(url, overlay_pdf)
-        
+        pdf_buffer = create_filled_pdf(st.session_state.form_data)
         if pdf_buffer:
             st.download_button(
                 label="Download Filled Form",
@@ -114,6 +119,11 @@ if st.button("Create and Download PDF"):
                 mime="application/pdf"
             )
 
+# Add additional debugging information
+if debug_mode:
+    st.subheader("Debug Information")
+    if hasattr(st.session_state, 'form_data'):
+        st.write("Current form data:", st.session_state.form_data)
 # Debug information
 if st.checkbox("Show Debug Information"):
     st.write("Template URL:", "https://www.irs.gov/pub/irs-pdf/f941sd.pdf")
