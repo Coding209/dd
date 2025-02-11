@@ -20,18 +20,18 @@ def download_pdf(url, path):
     if response.status_code == 200:
         with open(path, "wb") as f:
             f.write(response.content)
-        st.success(f"Downloaded the IRS Form 941 Schedule D")
+        st.success("✅ IRS Form 941 Schedule D downloaded successfully.")
     else:
-        st.error("Failed to download the form. Please check the URL.")
+        st.error("❌ Failed to download the form. Please check the URL.")
 
 # Function to extract fillable form field names
 def extract_form_fields(pdf_path):
     doc = fitz.open(pdf_path)
-    field_names = []
+    field_names = {}
     for page in doc:
         for field in page.widgets():  # Get form fields
             if field.field_name:
-                field_names.append(field.field_name)
+                field_names[field.field_name] = field.text  # Capture existing field values
     return field_names
 
 # Generate Synthetic Payroll Tax Data
@@ -56,15 +56,19 @@ def generate_synthetic_data(num_entries=1):
 # Function to fill PDF fields dynamically
 def fill_pdf(data, template_pdf=TEMPLATE_PDF_PATH):
     if not os.path.exists(template_pdf):
-        st.error("Template PDF not found. Please download the form first.")
+        st.error("❌ Template PDF not found. Please download the form first.")
         return None
 
     doc = fitz.open(template_pdf)  # Load the template PDF
 
-    # Extract form fields
-    field_names = extract_form_fields(template_pdf)
+    # Extract actual form field names
+    extracted_fields = extract_form_fields(template_pdf)
     
-    # Define mappings based on actual form field names
+    if not extracted_fields:
+        st.error("❌ No fillable fields found in the PDF. Please use a fillable version.")
+        return None
+
+    # Define mappings based on extracted form field names
     form_field_mappings = {
         "f1-1[0]": "EIN",
         "f1-2[0]": "Employer Name",
@@ -76,13 +80,15 @@ def fill_pdf(data, template_pdf=TEMPLATE_PDF_PATH):
         "f1-8[0]": "Total Tax Liability",
     }
 
-    # Fill form fields
+    # Update fields in the PDF
     for page in doc:
         for field in page.widgets():
             field_name = field.field_name
-            if field_name in form_field_mappings and form_field_mappings[field_name] in data:
-                field.text = str(data[form_field_mappings[field_name]])  # Set value
-                field.update()
+            if field_name in form_field_mappings:
+                mapped_data_key = form_field_mappings[field_name]
+                if mapped_data_key in data:
+                    field.text = str(data[mapped_data_key])  # Assign new value
+                    field.update()  # Apply changes
 
     # Save filled PDF to a buffer
     pdf_buffer = io.BytesIO()
@@ -96,14 +102,13 @@ st.write("Generate synthetic data or manually input values to auto-fill Form 941
 
 # Download the form if it doesn't exist
 if not os.path.exists(TEMPLATE_PDF_PATH):
-    st.info("Form template not found. Downloading...")
+    st.info("📥 Form template not found. Downloading...")
     download_pdf(FORM_URL, TEMPLATE_PDF_PATH)
 
 # Show extracted form fields (for debugging)
-if st.sidebar.button("Show Form Fields"):
-    st.sidebar.write("Extracting form field names...")
+if st.sidebar.button("🔍 Show Form Fields"):
     extracted_fields = extract_form_fields(TEMPLATE_PDF_PATH)
-    st.sidebar.write(extracted_fields)
+    st.sidebar.write("Extracted Fields:", extracted_fields)
 
 # Sidebar: User Options
 option = st.sidebar.selectbox("Choose an option:", ["Generate Synthetic Data", "Manual Input"])
@@ -121,7 +126,6 @@ if option == "Generate Synthetic Data":
         pdf_file = fill_pdf(selected_record)
 
         if pdf_file:
-            # Provide download link
             st.download_button(
                 label="📥 Download Filled Form 941 Schedule D",
                 data=pdf_file,
@@ -130,7 +134,7 @@ if option == "Generate Synthetic Data":
             )
 
 elif option == "Manual Input":
-    st.subheader("Enter Data Manually")
+    st.subheader("✍ Enter Data Manually")
     manual_data = {
         "EIN": st.text_input("Employer Identification Number (EIN)", "123456789"),
         "Employer Name": st.text_input("Employer Name", "ABC Corp"),
@@ -151,4 +155,5 @@ elif option == "Manual Input":
                 file_name="941_schedule_d_filled.pdf",
                 mime="application/pdf"
             )
+
 
