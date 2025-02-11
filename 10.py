@@ -1,147 +1,105 @@
 import streamlit as st
-import zipfile
-import io
+import pandas as pd
 import random
+import fitz  # PyMuPDF for PDF handling
 from faker import Faker
-from pdfrw import PdfReader, PdfWriter, PdfDict
+import io
 
-# Initialize Faker for synthetic data
+# Initialize Faker
 fake = Faker()
 
-# Define the fillable PDF template path
-TEMPLATE_PATH = "f1040.pdf"  # Ensure this exists in your repo
-
-# Step 1: Extract fillable field names from the 1040 PDF
-def extract_pdf_fields(template_path):
-    """Extract form field names from a fillable PDF"""
-    pdf = PdfReader(template_path)
-    fields = {}
-
-    for page in pdf.pages:
-        if page.Annots:
-            for annotation in page.Annots:
-                if annotation.T:
-                    field_name = annotation.T[1:-1]  # Extract actual field name
-                    fields[field_name] = ""
-
-    return fields
-
-# Step 2: Generate realistic synthetic tax data
-def generate_realistic_1040(fields):
-    tax_data = {}
-
-    # Filing Status
-    filing_status = random.choice(["Single", "Married Filing Jointly", "Married Filing Separately", "Head of Household"])
+# Generate Synthetic Payroll Tax Data
+def generate_synthetic_data(num_entries=1):
+    data = []
+    for _ in range(num_entries):
+        record = {
+            "EIN": fake.unique.random_number(digits=9, fix_len=True),
+            "Employer Name": fake.company(),
+            "Quarter": random.choice(["Q1", "Q2", "Q3", "Q4"]),
+            "Year": fake.random_int(min=2020, max=2025),
+            "Total Wages": round(random.uniform(50000, 200000), 2),
+            "Withheld Taxes": round(random.uniform(5000, 25000), 2),
+            "Adjustments": round(random.uniform(-500, 500), 2),
+            "Total Tax Liability": round(random.uniform(6000, 30000), 2),
+        }
+        data.append(record)
     
-    # Income Generation
-    wages = round(random.uniform(20000, 150000), 2)
-    interest_income = round(random.uniform(0, 5000), 2)
-    dividends = round(random.uniform(0, 3000), 2)
-    social_security = round(random.uniform(0, 20000), 2) if random.random() > 0.7 else 0  # 30% chance
+    df = pd.DataFrame(data)
+    return df
 
-    total_income = wages + interest_income + dividends + social_security
+# Function to Fill PDF
+def fill_pdf(data, template_pdf="941_schedule_d_template.pdf"):
+    doc = fitz.open(template_pdf)  # Load the PDF template
+    page = doc[0]  # Assume data goes on the first page
 
-    # Standard Deduction (based on filing status)
-    deductions = {
-        "Single": 14600,
-        "Married Filing Jointly": 29200,
-        "Married Filing Separately": 14600,
-        "Head of Household": 21900
-    }
-    
-    deduction_amount = deductions[filing_status]
-    taxable_income = max(total_income - deduction_amount, 0)
-
-    # Federal Tax Calculation (simplified tax bracket)
-    if taxable_income < 11000:
-        tax_due = taxable_income * 0.10
-    elif taxable_income < 44725:
-        tax_due = 1100 + (taxable_income - 11000) * 0.12
-    elif taxable_income < 95375:
-        tax_due = 5147 + (taxable_income - 44725) * 0.22
-    else:
-        tax_due = 16290 + (taxable_income - 95375) * 0.24
-
-    federal_tax_withheld = round(tax_due * random.uniform(0.7, 1.3), 2)
-
-    # Refund or Amount Owed
-    refund_amount = max(0, federal_tax_withheld - tax_due)
-    amount_owed = max(0, tax_due - federal_tax_withheld)
-
-    # Assign formatted data to form fields
-    mapping = {
-        "f1_01[0]": fake.first_name(),
-        "f1_02[0]": fake.last_name(),
-        "f1_03[0]": f"{random.randint(100, 999)}-{random.randint(10, 99)}-{random.randint(1000, 9999)}",
-        "f1_04[0]": fake.street_address(),
-        "f1_05[0]": fake.city(),
-        "f1_06[0]": fake.state_abbr(),
-        "f1_07[0]": fake.zipcode(),
-        "f1_09[0]": format_currency(wages),
-        "f1_10[0]": format_currency(interest_income),
-        "f1_11[0]": format_currency(total_income),
-        "f1_12[0]": format_currency(taxable_income),
-        "f1_13[0]": format_currency(tax_due),
-        "f1_14[0]": format_currency(federal_tax_withheld),
-        "f1_15[0]": format_currency(refund_amount),
-        "f1_16[0]": format_currency(amount_owed),
+    # Field mappings (update these with actual coordinates)
+    field_mappings = {
+        "Employer Name": (50, 150),
+        "EIN": (400, 150),
+        "Quarter": (50, 180),
+        "Year": (150, 180),
+        "Total Wages": (50, 210),
+        "Withheld Taxes": (50, 240),
+        "Adjustments": (50, 270),
+        "Total Tax Liability": (50, 300),
     }
 
-    for field in fields:
-        if field in mapping:
-            tax_data[field] = mapping[field]
-        else:
-            tax_data[field] = ""
+    # Fill fields in PDF
+    for field, (x, y) in field_mappings.items():
+        page.insert_text((x, y), str(data[field]), fontsize=10)
 
-    return tax_data
+    # Save filled PDF to a buffer
+    pdf_buffer = io.BytesIO()
+    doc.save(pdf_buffer)
+    pdf_buffer.seek(0)
+    return pdf_buffer
 
-# Format currency correctly
-def format_currency(value):
-    """Format numbers as currency with a dollar sign and commas."""
-    return f"${value:,.2f}" if isinstance(value, (int, float)) else value
+# Streamlit Web App
+st.title("📄 IRS Form 941 Schedule D Auto-Fill")
+st.write("Generate synthetic data or input manually to fill out Form 941 Schedule D.")
 
-# Step 3: Fill the 1040 PDF using `pdfrw`
-def fill_1040_pdf(template_path, data):
-    """Fill the fillable PDF with data and flatten it"""
-    template_pdf = PdfReader(template_path)
+# Sidebar: User Options
+option = st.sidebar.selectbox("Choose an option:", ["Generate Synthetic Data", "Manual Input"])
 
-    for page in template_pdf.pages:
-        if page.Annots:
-            for annotation in page.Annots:
-                if annotation.T:
-                    field_name = annotation.T[1:-1]
-                    if field_name in data:
-                        annotation.V = PdfDict(V=data[field_name], AS=data[field_name])  # Fill the field
+if option == "Generate Synthetic Data":
+    num_entries = st.sidebar.slider("Number of records:", 1, 5, 1)
+    if st.sidebar.button("Generate"):
+        synthetic_data = generate_synthetic_data(num_entries)
+        st.dataframe(synthetic_data)
 
-    # Flatten the PDF (makes the filled data permanent)
-    buffer = io.BytesIO()
-    PdfWriter(buffer, trailer=template_pdf).write()
-    buffer.seek(0)
-    return buffer
+        # Select a record for PDF filling
+        selected_record = synthetic_data.iloc[0].to_dict()
 
-# Streamlit UI
-st.title("Realistic Synthetic IRS Form 1040 Generator")
-st.write("This tool generates **realistic IRS Form 1040 PDFs** with accurate tax calculations.")
+        # Generate the PDF
+        pdf_file = fill_pdf(selected_record)
 
-num_forms = st.number_input("How many 1040 forms do you want to generate?", min_value=1, max_value=50, value=1)
+        # Provide download link
+        st.download_button(
+            label="📥 Download Filled Form 941 Schedule D",
+            data=pdf_file,
+            file_name="941_schedule_d_filled.pdf",
+            mime="application/pdf"
+        )
 
-if st.button("Generate and Download Forms"):
-    pdf_files = []
-    
-    extracted_fields = extract_pdf_fields(TEMPLATE_PATH)
+elif option == "Manual Input":
+    st.subheader("Enter Data Manually")
+    manual_data = {
+        "EIN": st.text_input("Employer Identification Number (EIN)", "123456789"),
+        "Employer Name": st.text_input("Employer Name", "ABC Corp"),
+        "Quarter": st.selectbox("Quarter", ["Q1", "Q2", "Q3", "Q4"]),
+        "Year": st.number_input("Year", min_value=2020, max_value=2025, value=2024),
+        "Total Wages": st.number_input("Total Wages ($)", min_value=0.0, step=1000.0, value=50000.0),
+        "Withheld Taxes": st.number_input("Withheld Taxes ($)", min_value=0.0, step=100.0, value=5000.0),
+        "Adjustments": st.number_input("Adjustments ($)", step=10.0, value=0.0),
+        "Total Tax Liability": st.number_input("Total Tax Liability ($)", min_value=0.0, step=1000.0, value=6000.0),
+    }
 
-    for i in range(num_forms):
-        synthetic_data = generate_realistic_1040(extracted_fields)
-        pdf_buffer = fill_1040_pdf(TEMPLATE_PATH, synthetic_data)
-        pdf_files.append((f"realistic_1040_{i+1}.pdf", pdf_buffer.getvalue()))
-    
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w") as zipf:
-        for filename, pdf_data in pdf_files:
-            zipf.writestr(filename, pdf_data)
-    
-    zip_buffer.seek(0)
+    if st.button("Generate PDF"):
+        pdf_file = fill_pdf(manual_data)
+        st.download_button(
+            label="📥 Download Filled Form 941 Schedule D",
+            data=pdf_file,
+            file_name="941_schedule_d_filled.pdf",
+            mime="application/pdf"
+        )
 
-    st.download_button("Download All 1040 Forms (ZIP)", data=zip_buffer, file_name="realistic_1040_forms.zip", mime="application/zip")
-
-    st.success(f"{num_forms} Realistic Form 1040 PDFs Generated and Ready for Download! ✅")
