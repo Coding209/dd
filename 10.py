@@ -1,11 +1,11 @@
 import streamlit as st
 import pandas as pd
 import random
-import fitz  # PyMuPDF for PDF handling
-from faker import Faker
 import io
 import os
 import requests
+from faker import Faker
+from pypdf import PdfReader, PdfWriter
 
 # Initialize Faker
 fake = Faker()
@@ -24,18 +24,11 @@ def download_pdf(url, path):
     else:
         st.error("❌ Failed to download the form. Please check the URL.")
 
-# Function to extract fillable form field names safely
+# Function to extract form field names
 def extract_form_fields(pdf_path):
-    doc = fitz.open(pdf_path)
-    field_names = {}
-    for page in doc:
-        for field in page.widgets():  # Get form fields
-            if field.field_name:  # Ensure the field has a name
-                try:
-                    field_names[field.field_name] = field.text if hasattr(field, 'text') else ""
-                except AttributeError:
-                    field_names[field.field_name] = ""  # Handle missing text attribute safely
-    return field_names
+    reader = PdfReader(pdf_path)
+    form_fields = reader.get_fields()
+    return form_fields if form_fields else {}
 
 # Generate Synthetic Payroll Tax Data
 def generate_synthetic_data(num_entries=1):
@@ -62,41 +55,51 @@ def fill_pdf(data, template_pdf=TEMPLATE_PDF_PATH):
         st.error("❌ Template PDF not found. Please download the form first.")
         return None
 
-    doc = fitz.open(template_pdf)  # Load the template PDF
+    reader = PdfReader(template_pdf)
+    writer = PdfWriter()
 
-    # Extract actual form field names
-    extracted_fields = extract_form_fields(template_pdf)
-    
-    if not extracted_fields:
-        st.error("❌ No fillable fields found in the PDF. Please use a fillable version.")
+    # Extract form fields
+    form_fields = extract_form_fields(template_pdf)
+    if not form_fields:
+        st.error("❌ No fillable fields detected in this PDF.")
         return None
 
-    # Define mappings based on extracted form field names
-    form_field_mappings = {
-        "f1-1[0]": "EIN",
-        "f1-2[0]": "Employer Name",
-        "f1-3[0]": "Quarter",
-        "f1-4[0]": "Year",
-        "f1-5[0]": "Total Wages",
-        "f1-6[0]": "Withheld Taxes",
-        "f1-7[0]": "Adjustments",
-        "f1-8[0]": "Total Tax Liability",
+    # Debug: Show extracted form fields
+    st.write("🔍 Extracted Form Fields:", form_fields.keys())
+
+    # Define field mappings based on extracted field names
+    field_mappings = {
+        "EIN": "Employer Identification Number",
+        "Employer Name": "Name",
+        "Quarter": "Quarter",
+        "Year": "Year",
+        "Total Wages": "Total Wages",
+        "Withheld Taxes": "Withheld Taxes",
+        "Adjustments": "Adjustments",
+        "Total Tax Liability": "Total Tax Liability",
     }
 
-    # Update fields in the PDF
-    for page in doc:
-        for field in page.widgets():
-            field_name = field.field_name
-            if field_name in form_field_mappings:
-                mapped_data_key = form_field_mappings[field_name]
-                if mapped_data_key in data:
-                    field.text = str(data[mapped_data_key])  # Assign new value
-                    field.update()  # Apply changes
+    # Get the first page
+    page = reader.pages[0]
+
+    # Fill in the fields
+    filled_fields = {}
+    for field_name, mapped_key in field_mappings.items():
+        if mapped_key in data and field_name in form_fields:
+            writer.update_page_form_field_values(page, {field_name: str(data[mapped_key])})
+            filled_fields[field_name] = data[mapped_key]
+
+    # Debug: Show filled fields
+    st.write("📌 Fields Filled:", filled_fields)
+
+    # Add modified page to writer
+    writer.add_page(page)
 
     # Save filled PDF to a buffer
     pdf_buffer = io.BytesIO()
-    doc.save(pdf_buffer)
+    writer.write(pdf_buffer)
     pdf_buffer.seek(0)
+
     return pdf_buffer
 
 # Streamlit Web App
@@ -111,7 +114,7 @@ if not os.path.exists(TEMPLATE_PDF_PATH):
 # Show extracted form fields (for debugging)
 if st.sidebar.button("🔍 Show Form Fields"):
     extracted_fields = extract_form_fields(TEMPLATE_PDF_PATH)
-    st.sidebar.write("Extracted Fields:", extracted_fields)
+    st.sidebar.write("Extracted Fields:", extracted_fields.keys())
 
 # Sidebar: User Options
 option = st.sidebar.selectbox("Choose an option:", ["Generate Synthetic Data", "Manual Input"])
