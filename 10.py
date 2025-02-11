@@ -10,19 +10,29 @@ import requests
 # Initialize Faker
 fake = Faker()
 
-# URL of the IRS Form 941 Schedule D
+# IRS Form 941 Schedule D URL
 FORM_URL = "https://www.irs.gov/pub/irs-pdf/f941sd.pdf"
 TEMPLATE_PDF_PATH = "f941sd_template.pdf"
 
-# Function to download the PDF form
+# Function to download IRS PDF form
 def download_pdf(url, path):
     response = requests.get(url)
     if response.status_code == 200:
         with open(path, "wb") as f:
             f.write(response.content)
-        st.success(f"Downloaded the form to {path}")
+        st.success(f"Downloaded the IRS Form 941 Schedule D")
     else:
         st.error("Failed to download the form. Please check the URL.")
+
+# Function to extract fillable form field names
+def extract_form_fields(pdf_path):
+    doc = fitz.open(pdf_path)
+    field_names = []
+    for page in doc:
+        for field in page.widgets():  # Get form fields
+            if field.field_name:
+                field_names.append(field.field_name)
+    return field_names
 
 # Generate Synthetic Payroll Tax Data
 def generate_synthetic_data(num_entries=1):
@@ -43,30 +53,36 @@ def generate_synthetic_data(num_entries=1):
     df = pd.DataFrame(data)
     return df
 
-# Function to Fill PDF
+# Function to fill PDF fields dynamically
 def fill_pdf(data, template_pdf=TEMPLATE_PDF_PATH):
     if not os.path.exists(template_pdf):
-        st.error("Template PDF not found. Please ensure the form is downloaded.")
+        st.error("Template PDF not found. Please download the form first.")
         return None
 
-    doc = fitz.open(template_pdf)  # Load the PDF template
-    page = doc[0]  # Assume data goes on the first page
+    doc = fitz.open(template_pdf)  # Load the template PDF
 
-    # Field mappings (update these with actual coordinates)
-    field_mappings = {
-        "Employer Name": (50, 150),
-        "EIN": (400, 150),
-        "Quarter": (50, 180),
-        "Year": (150, 180),
-        "Total Wages": (50, 210),
-        "Withheld Taxes": (50, 240),
-        "Adjustments": (50, 270),
-        "Total Tax Liability": (50, 300),
+    # Extract form fields
+    field_names = extract_form_fields(template_pdf)
+    
+    # Define mappings based on actual form field names
+    form_field_mappings = {
+        "f1-1[0]": "EIN",
+        "f1-2[0]": "Employer Name",
+        "f1-3[0]": "Quarter",
+        "f1-4[0]": "Year",
+        "f1-5[0]": "Total Wages",
+        "f1-6[0]": "Withheld Taxes",
+        "f1-7[0]": "Adjustments",
+        "f1-8[0]": "Total Tax Liability",
     }
 
-    # Fill fields in PDF
-    for field, (x, y) in field_mappings.items():
-        page.insert_text((x, y), str(data[field]), fontsize=10)
+    # Fill form fields
+    for page in doc:
+        for field in page.widgets():
+            field_name = field.field_name
+            if field_name in form_field_mappings and form_field_mappings[field_name] in data:
+                field.text = str(data[form_field_mappings[field_name]])  # Set value
+                field.update()
 
     # Save filled PDF to a buffer
     pdf_buffer = io.BytesIO()
@@ -76,12 +92,18 @@ def fill_pdf(data, template_pdf=TEMPLATE_PDF_PATH):
 
 # Streamlit Web App
 st.title("📄 IRS Form 941 Schedule D Auto-Fill")
-st.write("Generate synthetic data or input manually to fill out Form 941 Schedule D.")
+st.write("Generate synthetic data or manually input values to auto-fill Form 941 Schedule D.")
 
 # Download the form if it doesn't exist
 if not os.path.exists(TEMPLATE_PDF_PATH):
-    st.info("Form template not found locally. Downloading...")
+    st.info("Form template not found. Downloading...")
     download_pdf(FORM_URL, TEMPLATE_PDF_PATH)
+
+# Show extracted form fields (for debugging)
+if st.sidebar.button("Show Form Fields"):
+    st.sidebar.write("Extracting form field names...")
+    extracted_fields = extract_form_fields(TEMPLATE_PDF_PATH)
+    st.sidebar.write(extracted_fields)
 
 # Sidebar: User Options
 option = st.sidebar.selectbox("Choose an option:", ["Generate Synthetic Data", "Manual Input"])
@@ -129,5 +151,4 @@ elif option == "Manual Input":
                 file_name="941_schedule_d_filled.pdf",
                 mime="application/pdf"
             )
-
 
