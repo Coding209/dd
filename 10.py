@@ -1,112 +1,79 @@
 import streamlit as st
 import requests
 import io
+import os
 from pypdf import PdfReader, PdfWriter
 from faker import Faker
 import random
-from pypdf.generic import (
-    DictionaryObject,
-    NameObject,
-    ArrayObject,
-    createStringObject,
-    NumberObject
-)
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
 
 fake = Faker()
 
-def create_acroform_dictionary():
-    """Create a basic AcroForm dictionary."""
-    acroform = DictionaryObject()
-    acroform.update({
-        NameObject("/Fields"): ArrayObject(),
-        NameObject("/NeedAppearances"): NameObject("/True"),
-        NameObject("/SigFlags"): NumberObject(0),
-    })
-    return acroform
-
-def create_text_field(name, value, x, y, width=100, height=20, page_number=0):
-    """Create a text field at the specified position."""
-    field = DictionaryObject()
-    field.update({
-        NameObject("/FT"): NameObject("/Tx"),  # Text field
-        NameObject("/T"): createStringObject(name),  # Field name
-        NameObject("/V"): createStringObject(value),  # Field value
-        NameObject("/Type"): NameObject("/Annot"),
-        NameObject("/Subtype"): NameObject("/Widget"),
-        NameObject("/F"): NumberObject(4),
-        NameObject("/Rect"): ArrayObject([
-            NumberObject(x), NumberObject(y),
-            NumberObject(x + width), NumberObject(y + height)
-        ]),
-        NameObject("/P"): NumberObject(page_number),
-    })
-    return field
-
-def add_form_fields(writer, data):
-    """Add form fields to the PDF."""
-    # Create AcroForm dictionary
-    writer._root_object.update({
-        NameObject("/AcroForm"): create_acroform_dictionary()
-    })
-    
-    # Define field positions (these should match the form layout)
-    field_positions = {
-        "EIN": (50, 750),
-        "Name": (150, 700),
-        "TradeName": (150, 650),
-        "Address": (150, 600),
-        "City": (150, 550),
-        "State": (350, 550),
-        "ZIP": (450, 550),
-        "Phone": (150, 500),
-        "Year": (550, 750)
-    }
-    
-    # Add fields
-    for name, (x, y) in field_positions.items():
-        value = data.get(name, "")
-        field = create_text_field(name, value, x, y)
-        writer._root_object["/AcroForm"]["/Fields"].append(field)
-
-def generate_test_data():
-    """Generate test data for the form."""
+def generate_data():
+    """Generate synthetic form data."""
+    ein = f"{random.randint(10, 99)}-{random.randint(1000000, 9999999)}"
     return {
-        "EIN": f"{random.randint(10, 99)}-{random.randint(1000000, 9999999)}",
-        "Name": fake.company(),
-        "TradeName": fake.company_suffix(),
-        "Address": fake.street_address(),
-        "City": fake.city(),
-        "State": fake.state_abbr(),
-        "ZIP": fake.zipcode(),
-        "Phone": fake.phone_number(),
-        "Year": str(random.randint(2020, 2024))
+        "ein": ein,
+        "business_name": fake.company(),
+        "trade_name": fake.company_suffix(),
+        "address": fake.street_address(),
+        "city": fake.city(),
+        "state": fake.state_abbr(),
+        "zip_code": fake.zipcode(),
+        "phone": fake.phone_number(),
+        "year": str(random.randint(2020, 2024))
     }
 
-def create_filled_pdf():
-    """Create a PDF with form fields and fill them."""
+def create_overlay(data):
+    """Create a PDF overlay with the form data."""
+    packet = io.BytesIO()
+    c = canvas.Canvas(packet, pagesize=letter)
+    
+    # Position data on the form (coordinates need to be adjusted)
+    positions = {
+        "ein": (100, 700),
+        "business_name": (150, 660),
+        "trade_name": (150, 620),
+        "address": (150, 580),
+        "city": (150, 540),
+        "state": (350, 540),
+        "zip_code": (400, 540),
+        "phone": (150, 500),
+        "year": (500, 700)
+    }
+    
+    # Add text to the canvas
+    for field, value in data.items():
+        x, y = positions[field]
+        c.drawString(x, y, str(value))
+    
+    c.save()
+    packet.seek(0)
+    return packet
+
+def merge_pdfs(template_url, overlay_pdf):
+    """Merge the template with the overlay."""
     try:
-        # Download the template
-        url = "https://www.irs.gov/pub/irs-pdf/f941sd.pdf"
-        response = requests.get(url)
+        # Download template
+        response = requests.get(template_url)
         if response.status_code != 200:
             st.error("Failed to download template")
             return None
             
-        # Create PDF reader and writer
-        reader = PdfReader(io.BytesIO(response.content))
+        # Create PDF readers
+        template_pdf = PdfReader(io.BytesIO(response.content))
+        overlay = PdfReader(overlay_pdf)
+        
+        # Create writer
         writer = PdfWriter()
         
-        # Add the first page
-        writer.add_page(reader.pages[0])
+        # Merge pages
+        page = template_pdf.pages[0]
+        page.merge_page(overlay.pages[0])
+        writer.add_page(page)
         
-        # Generate and add form data
-        data = generate_test_data()
-        st.write("Generated data:", data)
-        
-        # Add form fields with data
-        add_form_fields(writer, data)
-        
-        # Save to buffer
+        # Write to buffer
         output_buffer = io.BytesIO()
         writer.write(output_buffer)
         output_buffer.seek(0)
@@ -114,20 +81,41 @@ def create_filled_pdf():
         return output_buffer
         
     except Exception as e:
-        st.error(f"Error creating PDF: {str(e)}")
-        import traceback
-        st.write("Detailed error:", traceback.format_exc())
+        st.error(f"Error merging PDFs: {str(e)}")
         return None
 
 # Main Streamlit app
 st.title("IRS Form 941 Schedule D Generator")
 
-if st.button("Generate Filled Form"):
-    pdf_buffer = create_filled_pdf()
-    if pdf_buffer:
-        st.download_button(
-            label="Download Filled Form",
-            data=pdf_buffer,
-            file_name="filled_form_941sd.pdf",
-            mime="application/pdf"
-        )
+# Generate Data button
+if st.button("Generate New Data"):
+    st.session_state.form_data = generate_data()
+    st.write("Generated Data:")
+    for key, value in st.session_state.form_data.items():
+        st.write(f"{key}: {value}")
+
+# Create and Download PDF button
+if st.button("Create and Download PDF"):
+    if not hasattr(st.session_state, 'form_data'):
+        st.warning("Please generate data first before creating PDF.")
+    else:
+        # Create overlay with form data
+        overlay_pdf = create_overlay(st.session_state.form_data)
+        
+        # Merge with template
+        url = "https://www.irs.gov/pub/irs-pdf/f941sd.pdf"
+        pdf_buffer = merge_pdfs(url, overlay_pdf)
+        
+        if pdf_buffer:
+            st.download_button(
+                label="Download Filled Form",
+                data=pdf_buffer,
+                file_name="filled_form_941sd.pdf",
+                mime="application/pdf"
+            )
+
+# Debug information
+if st.checkbox("Show Debug Information"):
+    st.write("Template URL:", "https://www.irs.gov/pub/irs-pdf/f941sd.pdf")
+    if hasattr(st.session_state, 'form_data'):
+        st.write("Current Form Data:", st.session_state.form_data)
