@@ -37,7 +37,7 @@ def generate_synthetic_data(num_entries=1):
             "EIN": fake.unique.random_number(digits=9, fix_len=True),
             "Employer Name": fake.company(),
             "Quarter": random.choice(["Q1", "Q2", "Q3", "Q4"]),
-            "Year": fake.random_int(min=2020, max_value=2025),
+            "Year": fake.random_int(min=2020, max=2025),  # Fixed Faker error
             "Total Wages": round(random.uniform(50000, 200000), 2),
             "Withheld Taxes": round(random.uniform(5000, 25000), 2),
             "Adjustments": round(random.uniform(-500, 500), 2),
@@ -64,7 +64,7 @@ def fill_pdf(data, template_pdf=TEMPLATE_PDF_PATH):
         return None
 
     # Debug: Show extracted form fields
-    st.write("🔍 Extracted Form Fields:", form_fields.keys())
+    st.write("🔍 Extracted Form Fields:", list(form_fields.keys()))
 
     # Define correct field mappings based on extracted names
     field_mappings = {
@@ -82,15 +82,14 @@ def fill_pdf(data, template_pdf=TEMPLATE_PDF_PATH):
     filled_fields = {}
     for pdf_field, data_key in field_mappings.items():
         if pdf_field in form_fields and data_key in data:
-            form_fields[pdf_field]["/V"] = str(data[data_key])
+            writer.update_page_form_field_values(reader.pages[0], {pdf_field: str(data[data_key])})
             filled_fields[pdf_field] = data[data_key]
 
     # Debug: Show filled fields
     st.write("📌 Fields Filled:", filled_fields)
 
-    # Update the writer with modified form fields
+    # Add modified page to writer
     writer.add_page(reader.pages[0])
-    writer.update_page_form_field_values(writer.pages[0], form_fields)
 
     # Save filled PDF to a buffer
     pdf_buffer = io.BytesIO()
@@ -111,7 +110,7 @@ if not os.path.exists(TEMPLATE_PDF_PATH):
 # Show extracted form fields (for debugging)
 if st.sidebar.button("🔍 Show Form Fields"):
     extracted_fields = extract_form_fields(TEMPLATE_PDF_PATH)
-    st.sidebar.write("Extracted Fields:", extracted_fields.keys())
+    st.sidebar.write("Extracted Fields:", list(extracted_fields.keys()))
 
 # Sidebar: User Options
 option = st.sidebar.selectbox("Choose an option:", ["Generate Synthetic Data", "Manual Input"])
