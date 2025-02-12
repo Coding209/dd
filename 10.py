@@ -5,7 +5,7 @@ import io
 import os
 import requests
 from faker import Faker
-import fitz  # PyMuPDF
+from pypdf import PdfReader, PdfWriter
 
 # Initialize Faker
 fake = Faker()
@@ -23,6 +23,12 @@ def download_pdf(url, path):
         st.success("✅ IRS Form 941 Schedule D downloaded successfully.")
     else:
         st.error("❌ Failed to download the form. Please check the URL.")
+
+# Function to extract form field names
+def extract_form_fields(pdf_path):
+    reader = PdfReader(pdf_path)
+    form_fields = reader.get_fields()
+    return form_fields if form_fields else {}
 
 # Generate Synthetic Payroll Tax Data
 def generate_synthetic_data(num_entries=1):
@@ -43,36 +49,52 @@ def generate_synthetic_data(num_entries=1):
     df = pd.DataFrame(data)
     return df
 
-# Function to insert text directly into the PDF using PyMuPDF
+# Function to correctly fill form fields in the PDF using pypdf
 def fill_pdf(data, template_pdf=TEMPLATE_PDF_PATH):
     if not os.path.exists(template_pdf):
         st.error("❌ Template PDF not found. Please download the form first.")
         return None
 
-    # Open the PDF using PyMuPDF
-    doc = fitz.open(template_pdf)
-    page = doc[0]  # Assume first page contains the form
+    reader = PdfReader(template_pdf)
+    writer = PdfWriter()
 
-    # Define text insertion positions (x, y coordinates) for each field
-    field_positions = {
-        "EIN": (100, 150),
-        "Employer Name": (100, 180),
-        "Quarter": (400, 180),
-        "Year": (500, 180),
-        "Total Wages": (100, 250),
-        "Withheld Taxes": (100, 280),
-        "Adjustments": (100, 310),
-        "Total Tax Liability": (100, 340),
+    # Extract form fields
+    form_fields = extract_form_fields(template_pdf)
+    if not form_fields:
+        st.error("❌ No fillable fields detected in this PDF.")
+        return None
+
+    # Debug: Show extracted form fields
+    st.write("🔍 Extracted Form Fields:", list(form_fields.keys()))
+
+    # Define correct field mappings based on extracted names
+    field_mappings = {
+        "f1-1[0]": "EIN",
+        "f1-2[0]": "Employer Name",
+        "f1-3[0]": "Quarter",
+        "f1-4[0]": "Year",
+        "f1-5[0]": "Total Wages",
+        "f1-6[0]": "Withheld Taxes",
+        "f1-7[0]": "Adjustments",
+        "f1-8[0]": "Total Tax Liability",
     }
 
-    # Insert text into the PDF
-    for field, (x, y) in field_positions.items():
-        if field in data:
-            page.insert_text((x, y), str(data[field]), fontsize=12, color=(0, 0, 0))
+    # Create a dictionary of values to update
+    updated_fields = {}
+    for pdf_field, data_key in field_mappings.items():
+        if pdf_field in form_fields and data_key in data:
+            updated_fields[pdf_field] = str(data[data_key])
+
+    # Update the form fields with values
+    writer.add_page(reader.pages[0])
+    writer.update_page_form_field_values(writer.pages[0], updated_fields)
+
+    # Debug: Show filled fields
+    st.write("📌 Fields Filled:", updated_fields)
 
     # Save filled PDF to a buffer
     pdf_buffer = io.BytesIO()
-    doc.save(pdf_buffer)
+    writer.write(pdf_buffer)
     pdf_buffer.seek(0)
 
     return pdf_buffer
@@ -85,6 +107,11 @@ st.write("Generate synthetic data or manually input values to auto-fill Form 941
 if not os.path.exists(TEMPLATE_PDF_PATH):
     st.info("📥 Form template not found. Downloading...")
     download_pdf(FORM_URL, TEMPLATE_PDF_PATH)
+
+# Show extracted form fields (for debugging)
+if st.sidebar.button("🔍 Show Form Fields"):
+    extracted_fields = extract_form_fields(TEMPLATE_PDF_PATH)
+    st.sidebar.write("Extracted Fields:", list(extracted_fields.keys()))
 
 # Sidebar: User Options
 option = st.sidebar.selectbox("Choose an option:", ["Generate Synthetic Data", "Manual Input"])
