@@ -37,7 +37,7 @@ def generate_synthetic_data(num_entries=1):
             "EIN": fake.unique.random_number(digits=9, fix_len=True),
             "Employer Name": fake.company(),
             "Quarter": random.choice(["Q1", "Q2", "Q3", "Q4"]),
-            "Year": fake.random_int(min=2020, max=2025),  # Fixed Faker error
+            "Year": fake.random_int(min=2020, max=2025),
             "Total Wages": round(random.uniform(50000, 200000), 2),
             "Withheld Taxes": round(random.uniform(5000, 25000), 2),
             "Adjustments": round(random.uniform(-500, 500), 2),
@@ -48,7 +48,7 @@ def generate_synthetic_data(num_entries=1):
     df = pd.DataFrame(data)
     return df
 
-# Function to fill PDF fields correctly
+# Function to correctly fill PDF form fields
 def fill_pdf(data, template_pdf=TEMPLATE_PDF_PATH):
     if not os.path.exists(template_pdf):
         st.error("❌ Template PDF not found. Please download the form first.")
@@ -58,7 +58,7 @@ def fill_pdf(data, template_pdf=TEMPLATE_PDF_PATH):
     writer = PdfWriter()
 
     # Extract form fields
-    form_fields = extract_form_fields(template_pdf)
+    form_fields = reader.get_fields()
     if not form_fields:
         st.error("❌ No fillable fields detected in this PDF.")
         return None
@@ -78,18 +78,20 @@ def fill_pdf(data, template_pdf=TEMPLATE_PDF_PATH):
         "f1-8[0]": "Total Tax Liability",
     }
 
+    # Create a new dictionary to store modified form field values
+    updated_fields = {}
+
     # Fill form fields
-    filled_fields = {}
     for pdf_field, data_key in field_mappings.items():
         if pdf_field in form_fields and data_key in data:
-            writer.update_page_form_field_values(reader.pages[0], {pdf_field: str(data[data_key])})
-            filled_fields[pdf_field] = data[data_key]
+            updated_fields[pdf_field] = str(data[data_key])
+
+    # Apply updates to the form fields
+    writer.add_page(reader.pages[0])
+    writer.update_page_form_field_values(writer.pages[0], updated_fields)
 
     # Debug: Show filled fields
-    st.write("📌 Fields Filled:", filled_fields)
-
-    # Add modified page to writer
-    writer.add_page(reader.pages[0])
+    st.write("📌 Fields Filled:", updated_fields)
 
     # Save filled PDF to a buffer
     pdf_buffer = io.BytesIO()
@@ -153,6 +155,11 @@ elif option == "Manual Input":
         if pdf_file:
             st.download_button(
                 label="📥 Download Filled Form 941 Schedule D",
+                data=pdf_file,
+                file_name="941_schedule_d_filled.pdf",
+                mime="application/pdf"
+            )
+
                 data=pdf_file,
                 file_name="941_schedule_d_filled.pdf",
                 mime="application/pdf"
