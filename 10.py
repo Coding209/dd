@@ -1,129 +1,121 @@
-import pandas as pd
-from google.cloud import documentai_v1 as documentai
-from google.api_core.client_options import ClientOptions
-from typing import Dict, List
+import streamlit as st
+import requests
+import io
+import os
+from pypdf import PdfReader, PdfWriter
+from faker import Faker
+import random
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
 
+fake = Faker()
 
-def process_form(
-    project_id: str,
-    location: str,
-    processor_id: str,
-    file_path: str,
-    mime_type: str = "application/pdf",
-) -> Dict:
-    """
-    Process a form using Document AI Form Parser
-    Returns extracted fields and their values
-    """
-    # Initialize the client
-    opts = ClientOptions(api_endpoint=f"{location}-documentai.googleapis.com")
-    client = documentai.DocumentProcessorServiceClient(client_options=opts)
+def generate_data():
+    """Generate synthetic form data."""
+    ein = f"{random.randint(10, 99)}-{random.randint(1000000, 9999999)}"
+    return {
+        "ein": ein,
+        "business_name": fake.company(),
+        "trade_name": fake.company_suffix(),
+        "address": fake.street_address(),
+        "city": fake.city(),
+        "state": fake.state_abbr(),
+        "zip_code": fake.zipcode(),
+        "phone": fake.phone_number(),
+        "year": str(random.randint(2020, 2024))
+    }
 
-    # Get full resource name of the processor
-    resource_name = client.processor_path(project_id, location, processor_id)
-
-    # Read the file
-    with open(file_path, "rb") as file:
-        file_content = file.read()
-
-    # Create the document object
-    raw_document = documentai.RawDocument(content=file_content, mime_type=mime_type)
-
-    # Configure the process request
-    request = documentai.ProcessRequest(
-        name=resource_name,
-        raw_document=raw_document
-    )
-
-    try:
-        # Process the document
-        result = client.process_document(request=request)
-        document = result.document
-        
-        # Extract fields from the document
-        extracted_fields = {}
-        
-        print("\nExtracted fields:")
-        # Get all fields from the document
-        for page in document.pages:
-            for field in page.form_fields:
-                # Get field name and value
-                field_name = get_text(field.field_name, document)
-                field_value = get_text(field.field_value, document)
-                confidence = field.confidence
-                
-                # Store in dictionary with confidence score
-                extracted_fields[field_name] = {
-                    'value': field_value,
-                    'confidence': f"{confidence:.2%}"
-                }
-                
-                print(f"{field_name}: {field_value} (Confidence: {confidence:.2%})")
-        
-        return extracted_fields
-
-    except Exception as e:
-        print(f"Error processing document: {str(e)}")
-        raise
-
-
-def get_text(doc_element: dict, document: documentai.Document) -> str:
-    """
-    Extract text from a document element
-    """
-    response = ""
-    # If a text segment spans several lines, it will
-    # be stored in different text segments.
-    for segment in doc_element.text_anchor.text_segments:
-        start_index = (
-            int(segment.start_index)
-            if segment in doc_element.text_anchor.text_segments
-            else 0
-        )
-        end_index = int(segment.end_index)
-        response += document.text[start_index:end_index]
-    return response.strip()
-
-
-def create_summary_dataframe(extracted_fields: Dict) -> pd.DataFrame:
-    """
-    Convert extracted fields to a DataFrame
-    """
-    data = []
-    for field_name, field_info in extracted_fields.items():
-        data.append({
-            'Field Name': field_name,
-            'Value': field_info['value'],
-            'Confidence': field_info['confidence']
-        })
+def create_overlay(data):
+    """Create a PDF overlay with the form data."""
+    packet = io.BytesIO()
+    c = canvas.Canvas(packet, pagesize=letter)
     
-    return pd.DataFrame(data)
+    # Position data on the form (coordinates need to be adjusted)
+    positions = {
+        "ein": (100, 700),
+        "business_name": (150, 660),
+        "trade_name": (150, 620),
+        "address": (150, 580),
+        "city": (150, 540),
+        "state": (350, 540),
+        "zip_code": (400, 540),
+        "phone": (150, 500),
+        "year": (500, 700)
+    }
+    
+    # Add text to the canvas
+    for field, value in data.items():
+        x, y = positions[field]
+        c.drawString(x, y, str(value))
+    
+    c.save()
+    packet.seek(0)
+    return packet
 
-
-if __name__ == "__main__":
-    # Configuration
-    PROJECT_ID = "YOUR_PROJECT_ID"
-    LOCATION = "YOUR_PROJECT_LOCATION"  # Format is 'us' or 'eu'
-    PROCESSOR_ID = "YOUR_FORM_PROCESSOR_ID"  # Make sure this is a Form Parser processor
-    FILE_PATH = "your_form.pdf"
-
+def merge_pdfs(template_url, overlay_pdf):
+    """Merge the template with the overlay."""
     try:
-        # Process the form
-        print(f"Processing form: {FILE_PATH}")
-        extracted_fields = process_form(
-            project_id=PROJECT_ID,
-            location=LOCATION,
-            processor_id=PROCESSOR_ID,
-            file_path=FILE_PATH
-        )
-
-        # Create summary DataFrame
-        df = create_summary_dataframe(extracted_fields)
+        # Download template
+        response = requests.get(template_url)
+        if response.status_code != 200:
+            st.error("Failed to download template")
+            return None
+            
+        # Create PDF readers
+        template_pdf = PdfReader(io.BytesIO(response.content))
+        overlay = PdfReader(overlay_pdf)
         
-        # Save results
-        output_file = "form_processing_results.csv"
-        df.to_csv(output_file, index=False)
-        print(f"\nResults saved to {output_file}")
-
+        # Create writer
+        writer = PdfWriter()
+        
+        # Merge pages
+        page = template_pdf.pages[0]
+        page.merge_page(overlay.pages[0])
+        writer.add_page(page)
+        
+        # Write to buffer
+        output_buffer = io.BytesIO()
+        writer.write(output_buffer)
+        output_buffer.seek(0)
+        
+        return output_buffer
+        
     except Exception as e:
-        print(f"Error in main process: {str(e)}")
+        st.error(f"Error merging PDFs: {str(e)}")
+        return None
+
+# Main Streamlit app
+st.title("IRS Form 941 Schedule D Generator")
+
+# Generate Data button
+if st.button("Generate New Data"):
+    st.session_state.form_data = generate_data()
+    st.write("Generated Data:")
+    for key, value in st.session_state.form_data.items():
+        st.write(f"{key}: {value}")
+
+# Create and Download PDF button
+if st.button("Create and Download PDF"):
+    if not hasattr(st.session_state, 'form_data'):
+        st.warning("Please generate data first before creating PDF.")
+    else:
+        # Create overlay with form data
+        overlay_pdf = create_overlay(st.session_state.form_data)
+        
+        # Merge with template
+        url = "https://www.irs.gov/pub/irs-pdf/f941sd.pdf"
+        pdf_buffer = merge_pdfs(url, overlay_pdf)
+        
+        if pdf_buffer:
+            st.download_button(
+                label="Download Filled Form",
+                data=pdf_buffer,
+                file_name="filled_form_941sd.pdf",
+                mime="application/pdf"
+            )
+
+# Debug information
+if st.checkbox("Show Debug Information"):
+    st.write("Template URL:", "https://www.irs.gov/pub/irs-pdf/f941sd.pdf")
+    if hasattr(st.session_state, 'form_data'):
+        st.write("Current Form Data:", st.session_state.form_data)
