@@ -43,7 +43,7 @@ def generate_synthetic_data(num_entries=1):
     df = pd.DataFrame(data)
     return df
 
-# Function to directly insert text into the PDF
+# Function to insert text directly into the PDF using PyMuPDF
 def fill_pdf(data, template_pdf=TEMPLATE_PDF_PATH):
     if not os.path.exists(template_pdf):
         st.error("❌ Template PDF not found. Please download the form first.")
