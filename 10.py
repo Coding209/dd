@@ -1,131 +1,129 @@
-import streamlit as st
-import requests
-import io
-import os
-from pypdf import PdfReader, PdfWriter
-from faker import Faker
-import random
+import pandas as pd
+from google.cloud import documentai_v1 as documentai
+from google.api_core.client_options import ClientOptions
+from typing import Dict, List
 
-fake = Faker()
 
-def download_template():
-    """Download the IRS form template."""
-    url = "https://www.irs.gov/pub/irs-pdf/f941sd.pdf"
+def process_form(
+    project_id: str,
+    location: str,
+    processor_id: str,
+    file_path: str,
+    mime_type: str = "application/pdf",
+) -> Dict:
+    """
+    Process a form using Document AI Form Parser
+    Returns extracted fields and their values
+    """
+    # Initialize the client
+    opts = ClientOptions(api_endpoint=f"{location}-documentai.googleapis.com")
+    client = documentai.DocumentProcessorServiceClient(client_options=opts)
+
+    # Get full resource name of the processor
+    resource_name = client.processor_path(project_id, location, processor_id)
+
+    # Read the file
+    with open(file_path, "rb") as file:
+        file_content = file.read()
+
+    # Create the document object
+    raw_document = documentai.RawDocument(content=file_content, mime_type=mime_type)
+
+    # Configure the process request
+    request = documentai.ProcessRequest(
+        name=resource_name,
+        raw_document=raw_document
+    )
+
     try:
-        response = requests.get(url)
-        if response.status_code == 200:
-            return io.BytesIO(response.content)
-        else:
-            st.error(f"Failed to download template. Status code: {response.status_code}")
-            return None
+        # Process the document
+        result = client.process_document(request=request)
+        document = result.document
+        
+        # Extract fields from the document
+        extracted_fields = {}
+        
+        print("\nExtracted fields:")
+        # Get all fields from the document
+        for page in document.pages:
+            for field in page.form_fields:
+                # Get field name and value
+                field_name = get_text(field.field_name, document)
+                field_value = get_text(field.field_value, document)
+                confidence = field.confidence
+                
+                # Store in dictionary with confidence score
+                extracted_fields[field_name] = {
+                    'value': field_value,
+                    'confidence': f"{confidence:.2%}"
+                }
+                
+                print(f"{field_name}: {field_value} (Confidence: {confidence:.2%})")
+        
+        return extracted_fields
+
     except Exception as e:
-        st.error(f"Failed to download template: {str(e)}")
-        return None
+        print(f"Error processing document: {str(e)}")
+        raise
 
-def generate_data():
-    """Generate synthetic form data."""
-    return {
-        "/ein1": str(random.randint(10, 99)),
-        "/ein2": str(random.randint(1000000, 9999999)),
-        "/name": fake.company(),
-        "/trade_name": fake.company_suffix(),
-        "/address": fake.street_address(),
-        "/city": fake.city(),
-        "/state": fake.state_abbr(),
-        "/zip": fake.zipcode(),
-        "/phone": fake.phone_number(),
-        "/year": str(random.randint(2020, 2024))
-    }
 
-def create_filled_pdf(data):
-    """Create a filled PDF using the template."""
-    try:
-        # Get template
-        template_buffer = download_template()
-        if not template_buffer:
-            return None
-            
-        # Create reader and writer
-        reader = PdfReader(template_buffer)
-        writer = PdfWriter()
-
-        # Get the first page
-        page = reader.pages[0]
-        writer.add_page(page)
-        
-        # Try to get form fields
-        fields = reader.get_fields()
-        if fields:
-            st.write("Found form fields:", fields.keys())
-        
-        # Try to fill in the form
-        writer.update_page_form_field_values(
-            writer.pages[0],
-            data
+def get_text(doc_element: dict, document: documentai.Document) -> str:
+    """
+    Extract text from a document element
+    """
+    response = ""
+    # If a text segment spans several lines, it will
+    # be stored in different text segments.
+    for segment in doc_element.text_anchor.text_segments:
+        start_index = (
+            int(segment.start_index)
+            if segment in doc_element.text_anchor.text_segments
+            else 0
         )
+        end_index = int(segment.end_index)
+        response += document.text[start_index:end_index]
+    return response.strip()
+
+
+def create_summary_dataframe(extracted_fields: Dict) -> pd.DataFrame:
+    """
+    Convert extracted fields to a DataFrame
+    """
+    data = []
+    for field_name, field_info in extracted_fields.items():
+        data.append({
+            'Field Name': field_name,
+            'Value': field_info['value'],
+            'Confidence': field_info['confidence']
+        })
+    
+    return pd.DataFrame(data)
+
+
+if __name__ == "__main__":
+    # Configuration
+    PROJECT_ID = "YOUR_PROJECT_ID"
+    LOCATION = "YOUR_PROJECT_LOCATION"  # Format is 'us' or 'eu'
+    PROCESSOR_ID = "YOUR_FORM_PROCESSOR_ID"  # Make sure this is a Form Parser processor
+    FILE_PATH = "your_form.pdf"
+
+    try:
+        # Process the form
+        print(f"Processing form: {FILE_PATH}")
+        extracted_fields = process_form(
+            project_id=PROJECT_ID,
+            location=LOCATION,
+            processor_id=PROCESSOR_ID,
+            file_path=FILE_PATH
+        )
+
+        # Create summary DataFrame
+        df = create_summary_dataframe(extracted_fields)
         
-        # Save to buffer
-        output_buffer = io.BytesIO()
-        writer.write(output_buffer)
-        output_buffer.seek(0)
-        
-        return output_buffer
-        
+        # Save results
+        output_file = "form_processing_results.csv"
+        df.to_csv(output_file, index=False)
+        print(f"\nResults saved to {output_file}")
+
     except Exception as e:
-        st.error(f"Error creating PDF: {str(e)}")
-        import traceback
-        st.write("Detailed error:", traceback.format_exc())
-        return None
-
-# Main Streamlit app
-st.title("IRS Form 941 Schedule D Generator")
-
-# Add debug toggle
-debug_mode = st.checkbox("Enable Debug Mode")
-
-# Show template information
-if debug_mode:
-    st.subheader("Template Information")
-    template_buffer = download_template()
-    if template_buffer:
-        reader = PdfReader(template_buffer)
-        st.write("PDF Version:", reader.pdf_version)
-        st.write("Number of Pages:", len(reader.pages))
-        st.write("Is Encrypted:", reader.is_encrypted)
-        fields = reader.get_fields()
-        if fields:
-            st.write("Form Fields Found:", list(fields.keys()))
-        else:
-            st.write("No form fields found in template")
-
-# Generate Data button
-if st.button("Generate New Data"):
-    st.session_state.form_data = generate_data()
-    st.write("Generated Data:")
-    for key, value in st.session_state.form_data.items():
-        st.write(f"{key}: {value}")
-
-# Create and Download PDF button
-if st.button("Create and Download PDF"):
-    if not hasattr(st.session_state, 'form_data'):
-        st.warning("Please generate data first before creating PDF.")
-    else:
-        pdf_buffer = create_filled_pdf(st.session_state.form_data)
-        if pdf_buffer:
-            st.download_button(
-                label="Download Filled Form",
-                data=pdf_buffer,
-                file_name="filled_form_941sd.pdf",
-                mime="application/pdf"
-            )
-
-# Add additional debugging information
-if debug_mode:
-    st.subheader("Debug Information")
-    if hasattr(st.session_state, 'form_data'):
-        st.write("Current form data:", st.session_state.form_data)
-# Debug information
-if st.checkbox("Show Debug Information"):
-    st.write("Template URL:", "https://www.irs.gov/pub/irs-pdf/f941sd.pdf")
-    if hasattr(st.session_state, 'form_data'):
-        st.write("Current Form Data:", st.session_state.form_data)
+        print(f"Error in main process: {str(e)}")
