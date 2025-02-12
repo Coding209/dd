@@ -27,8 +27,7 @@ def download_pdf(url, path):
 # Function to extract form field names
 def extract_form_fields(pdf_path):
     reader = PdfReader(pdf_path)
-    form_fields = reader.get_fields()
-    return form_fields if form_fields else {}
+    return reader.get_fields() if reader.get_fields() else {}
 
 # Generate Synthetic Payroll Tax Data
 def generate_synthetic_data(num_entries=1):
@@ -38,7 +37,7 @@ def generate_synthetic_data(num_entries=1):
             "EIN": fake.unique.random_number(digits=9, fix_len=True),
             "Employer Name": fake.company(),
             "Quarter": random.choice(["Q1", "Q2", "Q3", "Q4"]),
-            "Year": fake.random_int(min=2020, max=2025),
+            "Year": fake.random_int(min=2020, max_value=2025),
             "Total Wages": round(random.uniform(50000, 200000), 2),
             "Withheld Taxes": round(random.uniform(5000, 25000), 2),
             "Adjustments": round(random.uniform(-500, 500), 2),
@@ -49,7 +48,7 @@ def generate_synthetic_data(num_entries=1):
     df = pd.DataFrame(data)
     return df
 
-# Function to fill PDF fields dynamically
+# Function to fill PDF fields correctly
 def fill_pdf(data, template_pdf=TEMPLATE_PDF_PATH):
     if not os.path.exists(template_pdf):
         st.error("❌ Template PDF not found. Please download the form first.")
@@ -67,33 +66,31 @@ def fill_pdf(data, template_pdf=TEMPLATE_PDF_PATH):
     # Debug: Show extracted form fields
     st.write("🔍 Extracted Form Fields:", form_fields.keys())
 
-    # Define field mappings based on extracted field names
+    # Define correct field mappings based on extracted names
     field_mappings = {
-        "EIN": "Employer Identification Number",
-        "Employer Name": "Name",
-        "Quarter": "Quarter",
-        "Year": "Year",
-        "Total Wages": "Total Wages",
-        "Withheld Taxes": "Withheld Taxes",
-        "Adjustments": "Adjustments",
-        "Total Tax Liability": "Total Tax Liability",
+        "f1-1[0]": "EIN",
+        "f1-2[0]": "Employer Name",
+        "f1-3[0]": "Quarter",
+        "f1-4[0]": "Year",
+        "f1-5[0]": "Total Wages",
+        "f1-6[0]": "Withheld Taxes",
+        "f1-7[0]": "Adjustments",
+        "f1-8[0]": "Total Tax Liability",
     }
 
-    # Get the first page
-    page = reader.pages[0]
-
-    # Fill in the fields
+    # Fill form fields
     filled_fields = {}
-    for field_name, mapped_key in field_mappings.items():
-        if mapped_key in data and field_name in form_fields:
-            writer.update_page_form_field_values(page, {field_name: str(data[mapped_key])})
-            filled_fields[field_name] = data[mapped_key]
+    for pdf_field, data_key in field_mappings.items():
+        if pdf_field in form_fields and data_key in data:
+            form_fields[pdf_field]["/V"] = str(data[data_key])
+            filled_fields[pdf_field] = data[data_key]
 
     # Debug: Show filled fields
     st.write("📌 Fields Filled:", filled_fields)
 
-    # Add modified page to writer
-    writer.add_page(page)
+    # Update the writer with modified form fields
+    writer.add_page(reader.pages[0])
+    writer.update_page_form_field_values(writer.pages[0], form_fields)
 
     # Save filled PDF to a buffer
     pdf_buffer = io.BytesIO()
@@ -161,4 +158,5 @@ elif option == "Manual Input":
                 file_name="941_schedule_d_filled.pdf",
                 mime="application/pdf"
             )
+
 
