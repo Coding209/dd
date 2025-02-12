@@ -51,6 +51,16 @@ def analyze_pdf(pdf_buffer):
         st.error(f"Error analyzing PDF: {str(e)}")
         return None
 
+def create_field_patterns(data):
+    """Create different patterns for field names."""
+    patterns = {}
+    for key, value in data.items():
+        patterns[key] = value
+        patterns[f"/{key}"] = value
+        patterns[f"form1[0].{key}"] = value
+        patterns[f"topmostSubform[0].Page1[0].{key}"] = value
+    return patterns
+
 def try_fill_pdf(data):
     """Attempt to fill the PDF form."""
     try:
@@ -67,15 +77,8 @@ def try_fill_pdf(data):
         page = reader.pages[0]
         writer.add_page(page)
         
-        # Try different field name patterns
-        field_patterns = {
-            f"{k}": v,
-            f"/{k}": v,
-            f"form1[0].{k}": v,
-            f"topmostSubform[0].Page1[0].{k}": v
-        for k, v in data.items()}
-        
-        # Try to update fields
+        # Create field patterns and try to update fields
+        field_patterns = create_field_patterns(data)
         writer.update_page_form_field_values(writer.pages[0], field_patterns)
         
         # Save to buffer
