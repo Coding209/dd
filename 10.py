@@ -160,9 +160,4 @@ elif option == "Manual Input":
                 mime="application/pdf"
             )
 
-                data=pdf_file,
-                file_name="941_schedule_d_filled.pdf",
-                mime="application/pdf"
-            )
-
 
